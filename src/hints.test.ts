@@ -233,9 +233,67 @@ describe('hint detectors', () => {
     expect(detectRemotePair(board)?.type).toBe('remote-pair');
   });
 
-  it('detects Multi-coloring', () => {
-    expect(true).toBe(true);
+  // Forcing Chains removed
+
+  it('X-Wing edge case: no elimination when peers empty', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [4]);
+    setCandidates(board, 0, 4, [4]);
+    setCandidates(board, 2, 0, [4]);
+    setCandidates(board, 2, 4, [4]);
+    expect(detectXWing(board)).toBeNull();
   });
 
-  // Forcing Chains removed
+  it('Swordfish edge case: needs eliminations to return a hint', () => {
+    const board = makeBoard();
+    [0, 1, 2].forEach((row) => {
+      setCandidates(board, row, 0, [7]);
+      setCandidates(board, row, 1, [7]);
+      setCandidates(board, row, 2, [7]);
+    });
+    expect(detectFish(board, 3, 'swordfish', 'Swordfish')).toBeNull();
+  });
+
+  it('Jellyfish edge case: requires four lines and an external elimination', () => {
+    const board = makeBoard();
+    [0, 1, 2, 3].forEach((row) => {
+      [0, 1, 2, 3].forEach((col) => setCandidates(board, row, col, [8]));
+    });
+    setCandidates(board, 5, 0, [8]); // elimination target
+    const hint = detectFish(board, 4, 'jellyfish', 'Jellyfish');
+    expect(hint?.type).toBe('jellyfish');
+  });
+
+  it('XY-Wing edge case: ignores when intersection lacks target digit', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]); // pivot
+    setCandidates(board, 0, 3, [1, 3]); // wing
+    setCandidates(board, 3, 0, [2, 4]); // wing missing shared z
+    expect(detectXYWing(board)).toBeNull();
+  });
+
+  it('XYZ-Wing edge case: requires a candidate seen by all three', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2, 3]); // pivot
+    setCandidates(board, 0, 3, [1, 2]);
+    setCandidates(board, 3, 0, [1, 3]);
+    setCandidates(board, 3, 3, [4]); // no shared candidate
+    expect(detectXYZWing(board)).toBeNull();
+  });
+
+  it('W-Wing edge case: missing intersection eliminations', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]);
+    setCandidates(board, 2, 2, [1, 2]);
+    setCandidates(board, 1, 1, [3, 4]); // no shared peers
+    expect(detectWWing(board)).toBeNull();
+  });
+
+  it('Remote Pair edge case: even-length chain does not eliminate', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]);
+    setCandidates(board, 0, 3, [1, 2]);
+    setCandidates(board, 3, 0, [1, 2]); // even-length link
+    expect(detectRemotePair(board)).toBeNull();
+  });
 });

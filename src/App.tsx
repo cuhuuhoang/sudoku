@@ -161,6 +161,44 @@ const persistGame = (payload: SavedGame) => {
   );
 };
 
+const encodeGameState = (payload: SavedGame): string => {
+  const json = JSON.stringify({
+    level: payload.level,
+    board: payload.board,
+    initialBoard: payload.initialBoard,
+    solution: payload.solution,
+  });
+  try {
+    if (typeof btoa !== 'undefined') {
+      return btoa(encodeURIComponent(json));
+    }
+    // Node/test fallback
+    return Buffer.from(json, 'utf8').toString('base64');
+  } catch (error) {
+    console.warn('Unable to encode game', error);
+    return '';
+  }
+};
+
+const decodeGameState = (encoded: string): SavedGame | null => {
+  try {
+    const json =
+      typeof atob !== 'undefined'
+        ? decodeURIComponent(atob(encoded))
+        : Buffer.from(encoded, 'base64').toString('utf8');
+    const parsed = JSON.parse(json) as SavedGame;
+    return {
+      ...parsed,
+      board: parsed.board ? cloneBoard(parsed.board) : [],
+      initialBoard: parsed.initialBoard ? cloneBoard(parsed.initialBoard) : [],
+      solution: parsed.solution ? parsed.solution.map((row) => [...row]) : [],
+    };
+  } catch (error) {
+    console.warn('Unable to decode game', error);
+    return null;
+  }
+};
+
 const autoCleanCandidates = (source: CellState[][]): CellState[][] => {
   const board = cloneBoard(source);
   const removeFromPeers = (row: number, col: number, value: number) => {
@@ -412,6 +450,10 @@ function App() {
   const dragMovedRef = useRef(false);
   const [activeHint, setActiveHint] = useState<Hint | null>(null);
   const [automationSettings, setAutomationSettings] = useState<AutomationSettings>(() => readAutomationSettings());
+  const [isStateModalOpen, setIsStateModalOpen] = useState(false);
+  const [exportText, setExportText] = useState('');
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
 
   const resetSelectionState = () => {
     setSelectedCell(null);
@@ -704,6 +746,47 @@ function App() {
       }
     }
     startGame(level);
+  };
+
+  const handleExportState = () => {
+    if (!board.length || !solution.length) {
+      setExportText('');
+      setStatus('Start a puzzle to export state.');
+      return;
+    }
+    const encoded = encodeGameState({
+      board: cloneBoard(board),
+      initialBoard: cloneBoard(initialBoard),
+      solution: solution.map((row) => [...row]),
+      level,
+    });
+    setExportText(encoded);
+    setStatus('State copied to export field.');
+  };
+
+  const handleImportState = () => {
+    setImportError(null);
+    const trimmed = importText.trim();
+    if (!trimmed) {
+      setImportError('Paste a state string to import.');
+      return;
+    }
+    const decoded = decodeGameState(trimmed);
+    if (!decoded || !decoded.board?.length || !decoded.solution?.length) {
+      setImportError('Invalid state string.');
+      return;
+    }
+    setBoard(cloneBoard(decoded.board));
+    setInitialBoard(cloneBoard(decoded.initialBoard ?? []));
+    setSolution(decoded.solution.map((row) => [...row]));
+    setLevel(decoded.level ?? level);
+    setScreen('game');
+    resetSelectionState();
+    setActiveHint(null);
+    setHistory([]);
+    setHasSavedGame(true);
+    setStatus('State imported.');
+    setIsStateModalOpen(false);
   };
 
   const handleSetValue = (value: number | null) => {
@@ -1048,6 +1131,9 @@ function App() {
             <button onClick={handleUndo} disabled={!canUndo}>
               Undo
             </button>
+            <button onClick={() => setIsStateModalOpen(true)} disabled={!board.length || !solution.length}>
+              State
+            </button>
             <div className="hint-panel desktop-only">
               <button className="ghost hint-button" onClick={handleHint} disabled={!board.length}>
                 Show Hint
@@ -1110,6 +1196,53 @@ function App() {
           <button className="theme-toggle" onClick={toggleTheme}>
             {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
           </button>
+        </div>
+      )}
+      {isStateModalOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setIsStateModalOpen(false)}>
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-label="State tools"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>State tools</h2>
+              <button className="ghost close-button" onClick={() => setIsStateModalOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="modal-section">
+                <div className="modal-row">
+                  <span className="modal-title">Export</span>
+                  <button onClick={handleExportState} disabled={!board.length || !solution.length}>
+                    Copy state
+                  </button>
+                </div>
+                <textarea
+                  value={exportText}
+                  readOnly
+                  placeholder="Click Copy state to generate a shareable string."
+                  rows={3}
+                />
+              </div>
+              <div className="modal-section">
+                <div className="modal-row">
+                  <span className="modal-title">Import</span>
+                  <button onClick={handleImportState}>Load</button>
+                </div>
+                <textarea
+                  value={importText}
+                  onChange={(event) => setImportText(event.target.value)}
+                  placeholder="Paste a state string, then click Load."
+                  rows={3}
+                />
+                {importError && <p className="error-text">{importError}</p>}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

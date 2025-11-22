@@ -1031,60 +1031,17 @@ function App() {
       setStatus('No hint selected.');
       return;
     }
-    if (activeHint.digit === undefined) {
-      setStatus('Apply is unavailable for this hint type.');
-      return;
-    }
-    const targetDigit = activeHint.digit;
-    if (activeHint.cells.length === 0) {
-      setStatus('No cells to apply.');
-      return;
-    }
-
-    const firstCell = activeHint.cells[0];
-    const first = board[firstCell.row]?.[firstCell.col];
-    const isSinglePlacement =
-      ['naked-single', 'hidden-single-row', 'hidden-single-column', 'hidden-single-box'].includes(activeHint.type) ||
-      activeHint.cells.length === 1 ||
-      (first && isEditableCell(first) && first.candidates.length === 1);
-
-    if (isSinglePlacement && first && isEditableCell(first)) {
-      recordSnapshot();
-      commitBoardChange(
-        (draft) => {
-          const cell = draft[firstCell.row][firstCell.col];
-          cell.value = targetDigit;
-          cell.candidates = [];
-        },
-        `Placed ${targetDigit} at ${createCellLabel(firstCell.row, firstCell.col)}.`,
-      );
-      setActiveHint(null);
-      return;
-    }
-
-    const start = activeHint.eliminationStartIndex ?? (activeHint.cells.length > 1 ? 1 : 0);
-    const eliminationCells = activeHint.cells.slice(start);
-    if (eliminationCells.length === 0) {
-      setStatus('No elimination targets in this hint.');
-      return;
-    }
-
+    let result: { message: string; changed: boolean } | null = null;
     recordSnapshot();
-    let removed = 0;
     commitBoardChange(
       (draft) => {
-        eliminationCells.forEach(({ row, col }) => {
-          const cell = draft[row]?.[col];
-          if (cell && isEditableCell(cell) && cell.candidates.includes(targetDigit)) {
-            cell.candidates = cell.candidates.filter((d) => d !== targetDigit);
-            removed += 1;
-          }
-        });
+        result = applyHintToBoard(draft, activeHint);
       },
-      () => (removed ? `Removed ${targetDigit} from ${removed} cell${removed > 1 ? 's' : ''}.` : 'No candidates to remove.'),
+      () => result?.message ?? '',
     );
-    if (!removed) {
-      setStatus('No candidates to remove.');
+    setActiveHint(null);
+    if (result) {
+      setStatus(result.message);
     }
   };
 
@@ -1484,6 +1441,7 @@ export {
   detectForcingChains,
   encodeGameState,
   decodeGameState,
+  applyHintToBoard,
 };
 export type { CellState, CellPointer, AutomationSettings };
 
@@ -2785,9 +2743,13 @@ const detectForcingChains = (board: CellState[][], maxDepth: number): Hint | nul
     }
 
     const eliminations: CellPointer[] = [];
+    let eliminationDigit: number | undefined;
     first.removed.forEach((entry) => {
       if (second.removed.has(entry)) {
-        const [row, col] = entry.split('-').slice(0, 2).map(Number);
+        const [rowStr, colStr, digitStr] = entry.split('-');
+        const row = Number(rowStr);
+        const col = Number(colStr);
+        eliminationDigit = eliminationDigit ?? Number(digitStr);
         eliminations.push({ row, col });
       }
     });
@@ -2797,10 +2759,58 @@ const detectForcingChains = (board: CellState[][], maxDepth: number): Hint | nul
         title: 'Forcing Chain',
         message: `Both assumptions for ${createCellLabel(pivot.row, pivot.col)} eliminate the same candidates elsewhere.`,
         cells: [{ row: pivot.row, col: pivot.col }, ...eliminations],
-        digit: undefined,
+        digit: eliminationDigit,
         eliminationStartIndex: 1,
       };
     }
   }
   return null;
+};
+
+const applyHintToBoard = (working: CellState[][], hint: Hint): { message: string; changed: boolean } => {
+  const targetDigit = hint.digit;
+  if (hint.cells.length === 0) {
+    return { message: 'No cells to apply.', changed: false };
+  }
+
+  const first = hint.cells[0];
+  const firstCell = working[first.row]?.[first.col];
+  const isPlacementHint =
+    targetDigit !== undefined &&
+    (['naked-single', 'hidden-single-row', 'hidden-single-column', 'hidden-single-box'].includes(hint.type) ||
+      (firstCell && isEditableCell(firstCell) && firstCell.candidates.length === 1) ||
+      hint.cells.length === 1);
+
+  if (isPlacementHint && firstCell && isEditableCell(firstCell)) {
+    firstCell.value = targetDigit;
+    firstCell.candidates = [];
+    return {
+      message: `Placed ${targetDigit} at ${createCellLabel(first.row, first.col)}.`,
+      changed: true,
+    };
+  }
+
+  if (targetDigit === undefined) {
+    return { message: 'Apply is unavailable for this hint type.', changed: false };
+  }
+
+  const start = hint.eliminationStartIndex ?? (hint.cells.length > 1 ? 1 : 0);
+  const eliminationCells = hint.cells.slice(start);
+  if (eliminationCells.length === 0) {
+    return { message: 'No elimination targets in this hint.', changed: false };
+  }
+
+  let removed = 0;
+  eliminationCells.forEach(({ row, col }) => {
+    const cell = working[row]?.[col];
+    if (cell && isEditableCell(cell) && cell.candidates.includes(targetDigit)) {
+      cell.candidates = cell.candidates.filter((d) => d !== targetDigit);
+      removed += 1;
+    }
+  });
+
+  return {
+    message: removed ? `Removed ${targetDigit} from ${removed} cell${removed > 1 ? 's' : ''}.` : 'No candidates to remove.',
+    changed: removed > 0,
+  };
 };

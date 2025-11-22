@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
+const repoBase = '/sudoku/';
+
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? repoBase : '/',
   plugins: [react()],
   server: {
     host: '0.0.0.0',
@@ -15,4 +18,4 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ['hoangch-virt.dev.itim.vn'],
   },
-});
+}));

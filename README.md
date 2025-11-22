@@ -19,6 +19,17 @@ The dev server binds to `0.0.0.0:7203` so you can load it from other devices on 
 - `npm run build` – type-check and build production assets
 - `scripts/test.sh` – helper script that installs deps (if needed) then runs tests and build
 
+## Deploying to GitHub Pages
+This repo is pre-configured for GitHub Pages using the workflow in `.github/workflows/deploy.yml`.
+
+1. Push to `master` on GitHub – the workflow installs deps, runs the build, and publishes `dist` to Pages.
+2. In the repository settings (`Settings` → `Pages`), set the build source to **GitHub Actions** (one-time step).
+3. Wait for the workflow to finish; the site will be available at `https://<your-user>.github.io/sudoku/`.
+
+Notes:
+- Vite’s `base` is set to `/sudoku/` for production builds. If you rename the repository, update `repoBase` inside `vite.config.ts`.
+- You can trigger manual deployments via the “Deploy to GitHub Pages” workflow dispatch in the Actions tab.
+
 ## Features
 - **Level picker**: Easy/Medium/Hard generator with unique solutions
 - **Board interactions**: Tap-only value entry, candidate toggling, auto-cleanup/promote, undo history (3 steps)

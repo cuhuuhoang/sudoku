@@ -154,16 +154,6 @@ const persistGame = (payload: SavedGame) => {
 
 const autoCleanCandidates = (source: CellState[][]): CellState[][] => {
   const board = cloneBoard(source);
-  board.forEach((row) => {
-    row.forEach((cell) => {
-      if (cell.value === null) {
-        cell.candidates = [...new Set(cell.candidates)].sort();
-      } else {
-        cell.candidates = [];
-      }
-    });
-  });
-
   const removeFromPeers = (row: number, col: number, value: number) => {
     board[row].forEach((peer, idx) => {
       if (idx !== col && peer.value === null && peer.candidates.includes(value)) {
@@ -194,6 +184,16 @@ const autoCleanCandidates = (source: CellState[][]): CellState[][] => {
     }
   };
 
+  board.forEach((row) => {
+    row.forEach((cell) => {
+      if (cell.value === null) {
+        cell.candidates = [...new Set(cell.candidates)].sort();
+      } else {
+        cell.candidates = [];
+      }
+    });
+  });
+
   board.forEach((row, rowIdx) => {
     row.forEach((cell, colIdx) => {
       if (cell.value !== null) {
@@ -207,12 +207,43 @@ const autoCleanCandidates = (source: CellState[][]): CellState[][] => {
 
 const promoteSingles = (source: CellState[][]): { board: CellState[][]; promoted: number } => {
   const board = cloneBoard(source);
+  const cleanPeers = (row: number, col: number, value: number) => {
+    board[row].forEach((peer, idx) => {
+      if (idx !== col && peer.value === null && peer.candidates.includes(value)) {
+        peer.candidates = peer.candidates.filter((v) => v !== value);
+      }
+    });
+
+    board.forEach((peerRow, idx) => {
+      if (idx !== row) {
+        const peer = peerRow[col];
+        if (peer.value === null && peer.candidates.includes(value)) {
+          peer.candidates = peer.candidates.filter((v) => v !== value);
+        }
+      }
+    });
+
+    const startRow = Math.floor(row / 3) * 3;
+    const startCol = Math.floor(col / 3) * 3;
+    for (let r = startRow; r < startRow + 3; r += 1) {
+      for (let c = startCol; c < startCol + 3; c += 1) {
+        if ((r !== row || c !== col) && board[r][c].value === null) {
+          const peer = board[r][c];
+          if (peer.candidates.includes(value)) {
+            peer.candidates = peer.candidates.filter((v) => v !== value);
+          }
+        }
+      }
+    }
+  };
+
   let promoted = 0;
   board.forEach((row) => {
     row.forEach((cell) => {
       if (!cell.given && cell.value === null && cell.candidates.length === 1) {
         cell.value = cell.candidates[0];
         cell.candidates = [];
+        cleanPeers(cell.row, cell.col, cell.value);
         promoted += 1;
       }
     });
@@ -223,6 +254,35 @@ const promoteSingles = (source: CellState[][]): { board: CellState[][]; promoted
 const promoteHiddenSingles = (source: CellState[][]): { board: CellState[][]; promoted: number } => {
   const board = cloneBoard(source);
   let promoted = 0;
+  const cleanPeers = (row: number, col: number, value: number) => {
+    board[row].forEach((peer, idx) => {
+      if (idx !== col && peer.value === null && peer.candidates.includes(value)) {
+        peer.candidates = peer.candidates.filter((v) => v !== value);
+      }
+    });
+
+    board.forEach((peerRow, idx) => {
+      if (idx !== row) {
+        const peer = peerRow[col];
+        if (peer.value === null && peer.candidates.includes(value)) {
+          peer.candidates = peer.candidates.filter((v) => v !== value);
+        }
+      }
+    });
+
+    const startRow = Math.floor(row / 3) * 3;
+    const startCol = Math.floor(col / 3) * 3;
+    for (let r = startRow; r < startRow + 3; r += 1) {
+      for (let c = startCol; c < startCol + 3; c += 1) {
+        if ((r !== row || c !== col) && board[r][c].value === null) {
+          const peer = board[r][c];
+          if (peer.candidates.includes(value)) {
+            peer.candidates = peer.candidates.filter((v) => v !== value);
+          }
+        }
+      }
+    }
+  };
 
   const tryPromote = (row: number, col: number, value: number) => {
     const cell = board[row][col];
@@ -230,6 +290,7 @@ const promoteHiddenSingles = (source: CellState[][]): { board: CellState[][]; pr
       cell.value = value;
       cell.candidates = [];
       promoted += 1;
+      cleanPeers(row, col, value);
     }
   };
 

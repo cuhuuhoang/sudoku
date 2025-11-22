@@ -590,11 +590,17 @@ function App() {
       return;
     }
     setActiveHint(hint);
-    setIsMultiSelectMode(true);
-    const nextKeys = new Set<string>();
-    hint.cells.forEach((cell) => nextKeys.add(createCellKey(cell.row, cell.col)));
-    setMultiSelectedKeys(nextKeys);
-    setSelectedCell(null);
+    if (hint.cells.length === 1) {
+      setIsMultiSelectMode(false);
+      setMultiSelectedKeys(new Set<string>());
+      setSelectedCell(hint.cells[0]);
+    } else {
+      setIsMultiSelectMode(true);
+      const nextKeys = new Set<string>();
+      hint.cells.forEach((cell) => nextKeys.add(createCellKey(cell.row, cell.col)));
+      setMultiSelectedKeys(nextKeys);
+      setSelectedCell(null);
+    }
     setStatus(hint.message);
   };
 

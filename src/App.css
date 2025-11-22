@@ -249,7 +249,7 @@ button.ghost {
 }
 
 .modal-card {
-  background: var(--control-bg);
+  background: #ffffff;
   border-radius: 14px;
   border: 1px solid var(--tile-border);
   width: min(540px, 95vw);
@@ -258,6 +258,10 @@ button.ghost {
   flex-direction: column;
   gap: 0.75rem;
   box-shadow: none;
+}
+
+[data-theme='dark'] .modal-card {
+  background: #0f172a;
 }
 
 .modal-header {

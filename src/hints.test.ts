@@ -186,6 +186,15 @@ describe('hint detectors', () => {
     expect(detectWWing(board)?.type).toBe('w-wing');
   });
 
+  it('detects W-Wing via row strong link', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]); // wing A
+    setCandidates(board, 1, 2, [1, 2]); // wing B
+    setCandidates(board, 1, 0, [1, 2]); // strong link on 1 in column 0 (rows 0 and 1)
+    const hint = detectWWing(board);
+    expect(hint?.type).toBe('w-wing');
+  });
+
   it('detects Remote Pair', () => {
     const board = makeBoard();
     setCandidates(board, 0, 0, [1, 2]); // endpoint A

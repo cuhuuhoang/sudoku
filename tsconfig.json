@@ -13,5 +13,6 @@
     "module": "ESNext",
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/sw.ts"]
 }

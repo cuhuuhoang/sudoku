@@ -560,6 +560,7 @@ function App() {
   const isPointerSelecting = useRef(false);
   const dragSelectedKeys = useRef<Set<string>>(new Set<string>());
   const dragMovedRef = useRef(false);
+  const pointerAddedKeyRef = useRef<string | null>(null);
   const [activeHint, setActiveHint] = useState<Hint | null>(null);
   const [automationSettings, setAutomationSettings] = useState<AutomationSettings>(() => readAutomationSettings());
   const [isStateModalOpen, setIsStateModalOpen] = useState(false);
@@ -642,6 +643,7 @@ function App() {
     const endPointerSelection = (event: PointerEvent) => {
       isPointerSelecting.current = false;
       dragSelectedKeys.current.clear();
+      pointerAddedKeyRef.current = null;
       if (boardRef.current && !boardRef.current.contains(event.target as Node)) {
         dragMovedRef.current = false;
       }
@@ -1132,16 +1134,26 @@ function App() {
                         onPointerDown={() => {
                           isPointerSelecting.current = true;
                           dragMovedRef.current = false;
+                          pointerAddedKeyRef.current = null;
                           dragSelectedKeys.current = isEditableCell ? new Set<string>([key]) : new Set<string>();
                           if (!isMultiSelectMode) {
                             setSelectedCell({ row: rowIdx, col: colIdx });
                           }
                           if (isMultiSelectMode && isEditableCell) {
-                            setMultiSelectedKeys((prev) => {
-                              const next = new Set(prev);
-                              next.add(key);
-                              return next;
-                            });
+                            const alreadySelected = multiSelectedKeys.has(key);
+                            if (!alreadySelected) {
+                              setMultiSelectedKeys((prev) => {
+                                if (prev.has(key)) {
+                                  return prev;
+                                }
+                                const next = new Set(prev);
+                                next.add(key);
+                                return next;
+                              });
+                              pointerAddedKeyRef.current = key;
+                            } else {
+                              pointerAddedKeyRef.current = null;
+                            }
                           }
                         }}
                         onPointerEnter={() => {
@@ -1152,6 +1164,7 @@ function App() {
                             return;
                           }
                           dragMovedRef.current = true;
+                          pointerAddedKeyRef.current = null;
                           dragSelectedKeys.current.add(key);
                           if (dragSelectedKeys.current.size > 1 && !isMultiSelectMode) {
                             setIsMultiSelectMode(true);
@@ -1168,10 +1181,15 @@ function App() {
                         onClick={() => {
                           if (dragMovedRef.current) {
                             dragMovedRef.current = false;
+                            pointerAddedKeyRef.current = null;
                             return;
                           }
                           if (isMultiSelectMode) {
                             if (!isEditableCell) {
+                              return;
+                            }
+                            if (pointerAddedKeyRef.current === key) {
+                              pointerAddedKeyRef.current = null;
                               return;
                             }
                             setMultiSelectedKeys((prev) => {
@@ -1187,6 +1205,7 @@ function App() {
                               }
                               return next;
                             });
+                            pointerAddedKeyRef.current = null;
                           } else {
                             setSelectedCell({ row: rowIdx, col: colIdx });
                           }

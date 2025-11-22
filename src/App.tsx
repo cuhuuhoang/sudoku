@@ -712,12 +712,15 @@ function App() {
                 </div>
 
                 <div className="pad-column">
-                  <p className="section-title">Candidates</p>
-                  {isMultiSelectMode && (
-                    <p className="muted" style={{ fontSize: '0.8rem', marginTop: '-0.25rem' }}>
-                      Multi-select: tap digits to remove from highlighted tiles.
-                    </p>
-                  )}
+                  <p className="section-title">
+                    Candidates
+                    {isMultiSelectMode && (
+                      <>
+                        {' '}
+                        <span className="muted">(remove)</span>
+                      </>
+                    )}
+                  </p>
                   <div className="digit-matrix">
                     {DIGITS.map((digit) => {
                       const isOn = !isMultiSelectMode && selectedCellData?.candidates.includes(digit);

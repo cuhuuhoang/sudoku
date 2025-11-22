@@ -37,6 +37,7 @@ interface Hint {
   cells: CellPointer[];
   digit?: number;
   eliminationStartIndex?: number;
+  eliminations?: CellPointer[];
 }
 
 interface CellState {
@@ -1626,6 +1627,7 @@ const detectPeerElimination: HintDetector = (board) => {
           cells: [{ row, col }, ...offenders],
           digit: cell.value ?? undefined,
           eliminationStartIndex: 1,
+          eliminations: offenders,
         };
       }
     }
@@ -1664,13 +1666,14 @@ const detectLockedCandidatesPointing: HintDetector = (board) => {
               eliminationTargets.push({ row: rowIdx, col });
             }
           }
-          if (eliminationTargets.length > 0) {
-            return {
-              type: 'locked-pointing',
-              title: 'Locked Candidates (Pointing)',
-              message: `Digit ${digit} is locked in row ${rowIdx + 1} of this box. Remove ${digit} from other cells in that row.`,
-              cells: [...cells, ...eliminationTargets],
+        if (eliminationTargets.length > 0) {
+          return {
+            type: 'locked-pointing',
+            title: 'Locked Candidates (Pointing)',
+            message: `Digit ${digit} is locked in row ${rowIdx + 1} of this box. Remove ${digit} from other cells in that row.`,
+              cells,
               digit,
+              eliminations: eliminationTargets,
               eliminationStartIndex: cells.length,
             };
           }
@@ -1693,8 +1696,9 @@ const detectLockedCandidatesPointing: HintDetector = (board) => {
               type: 'locked-pointing',
               title: 'Locked Candidates (Pointing)',
               message: `Digit ${digit} is locked in column ${colIdx + 1} of this box. Remove ${digit} from other cells in that column.`,
-              cells: [...cells, ...eliminationTargets],
+              cells,
               digit,
+              eliminations: eliminationTargets,
               eliminationStartIndex: cells.length,
             };
           }
@@ -1740,9 +1744,9 @@ const detectLockedCandidatesClaiming: HintDetector = (board) => {
             type: 'locked-claiming',
             title: 'Locked Candidates (Claiming)',
             message: `Digit ${digit} appears only in box ${Math.floor(row / 3) + 1}, so remove it from other cells of that box.`,
-            cells: [...positions, ...eliminationTargets],
+            cells: positions,
             digit,
-            eliminationStartIndex: positions.length,
+            eliminations: eliminationTargets,
           };
         }
       }
@@ -1781,9 +1785,9 @@ const detectLockedCandidatesClaiming: HintDetector = (board) => {
             type: 'locked-claiming',
             title: 'Locked Candidates (Claiming)',
             message: `Digit ${digit} appears only in column ${col + 1} inside one box. Remove it from other cells of that box.`,
-            cells: [...positions, ...eliminationTargets],
+            cells: positions,
             digit,
-            eliminationStartIndex: positions.length,
+            eliminations: eliminationTargets,
           };
         }
       }
@@ -2016,9 +2020,9 @@ const detectXWing: HintDetector = (board) => {
                 { row: rowA, col: colsA[1] },
                 { row: rowB, col: colsA[0] },
                 { row: rowB, col: colsA[1] },
-                ...eliminationTargets,
               ],
               digit,
+              eliminations: eliminationTargets,
               eliminationStartIndex: 4,
             };
           }
@@ -2061,9 +2065,9 @@ const detectXWing: HintDetector = (board) => {
                 { row: rowsA[1], col: colA },
                 { row: rowsA[0], col: colB },
                 { row: rowsA[1], col: colB },
-                ...eliminationTargets,
               ],
               digit,
+              eliminations: eliminationTargets,
               eliminationStartIndex: 4,
             };
           }
@@ -2141,8 +2145,9 @@ const detectFish = (board: CellState[][], size: 3 | 4, type: HintType, title: st
           type,
           title: `${title} (${orientation === 'row' ? 'rows' : 'columns'})`,
           message: `${title} on digit ${digit}. Remove ${digit} from highlighted peer cells.`,
-          cells: [...baseCells, ...eliminations],
+          cells: baseCells,
           digit,
+          eliminations,
           eliminationStartIndex: baseCells.length,
         };
       }
@@ -2214,20 +2219,20 @@ const detectXYWing: HintDetector = (board) => {
           const pivotLabel = createCellLabel(pivot.row, pivot.col);
           const wingALabel = createCellLabel(a.row, a.col);
           const wingBLabel = createCellLabel(b.row, b.col);
-          const eliminationStartIndex = 3;
-          return {
-            type: 'xy-wing',
-            title: 'XY-Wing',
-            message: `Pivot ${pivotLabel} (${x}/${y}) links ${wingALabel} (${x}/${z}) and ${wingBLabel} (${y}/${z}). Remove ${z} from any cell seeing both wings.`,
-            cells: [
-              { row: pivot.row, col: pivot.col },
-              { row: a.row, col: a.col },
-              { row: b.row, col: b.col },
-              ...eliminations,
-            ],
-            digit: z,
-            eliminationStartIndex,
-          };
+        const eliminationStartIndex = 3;
+        return {
+          type: 'xy-wing',
+          title: 'XY-Wing',
+          message: `Pivot ${pivotLabel} (${x}/${y}) links ${wingALabel} (${x}/${z}) and ${wingBLabel} (${y}/${z}). Remove ${z} from any cell seeing both wings.`,
+          cells: [
+            { row: pivot.row, col: pivot.col },
+            { row: a.row, col: a.col },
+            { row: b.row, col: b.col },
+          ],
+          digit: z,
+          eliminations,
+          eliminationStartIndex,
+        };
         }
       }
     }
@@ -2291,9 +2296,9 @@ const detectXYZWing: HintDetector = (board) => {
             { row: pivot.row, col: pivot.col },
             { row: w1.row, col: w1.col },
             { row: w2.row, col: w2.col },
-            ...eliminations,
           ],
           digit: targetDigit,
+          eliminations,
           eliminationStartIndex: 3,
         };
       }
@@ -2800,7 +2805,7 @@ const applyHintToBoard = (working: CellState[][], hint: Hint): { message: string
   }
 
   const start = hint.eliminationStartIndex ?? (hint.cells.length > 1 ? 1 : 0);
-  const eliminationCells = hint.cells.slice(start);
+  const eliminationCells = hint.eliminations ?? hint.cells.slice(start);
   if (eliminationCells.length === 0) {
     return { message: 'No elimination targets in this hint.', changed: false };
   }

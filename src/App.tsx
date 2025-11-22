@@ -19,7 +19,11 @@ type HintType =
   | 'hidden-pair'
   | 'hidden-triple'
   | 'hidden-quad'
-  | 'x-wing';
+  | 'x-wing'
+  | 'swordfish'
+  | 'jellyfish'
+  | 'xy-wing'
+  | 'xyz-wing';
 
 interface Hint {
   type: HintType;
@@ -1132,6 +1136,10 @@ const findHint = (board: CellState[][]): Hint | null => {
     (b) => detectHiddenSet(b, 3, 'hidden-triple', 'Hidden Triple'),
     (b) => detectHiddenSet(b, 4, 'hidden-quad', 'Hidden Quad'),
     detectXWing,
+    (b) => detectFish(b, 3, 'swordfish', 'Swordfish'),
+    (b) => detectFish(b, 4, 'jellyfish', 'Jellyfish'),
+    detectXYWing,
+    detectXYZWing,
   ];
   for (const detector of detectors) {
     const hint = detector(board);
@@ -1709,4 +1717,212 @@ const detectXWing: HintDetector = (board) => {
   };
 
   return checkRows() ?? checkCols();
+};
+
+const detectFish = (board: CellState[][], size: 3 | 4, type: HintType, title: string): Hint | null => {
+  const findInOrientation = (orientation: 'row' | 'col'): Hint | null => {
+    for (const digit of DIGITS) {
+      const lines: { idx: number; positions: number[] }[] = [];
+      for (let line = 0; line < 9; line += 1) {
+        const positions: number[] = [];
+        for (let pos = 0; pos < 9; pos += 1) {
+          const cell = orientation === 'row' ? board[line][pos] : board[pos][line];
+          if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+            positions.push(pos);
+          }
+        }
+        if (positions.length >= 2 && positions.length <= size) {
+          lines.push({ idx: line, positions });
+        }
+      }
+      if (lines.length < size) {
+        continue;
+      }
+      for (const combo of combinations(lines, size)) {
+        const union = new Set<number>();
+        combo.forEach((line) => line.positions.forEach((p) => union.add(p)));
+        if (union.size !== size) {
+          continue;
+        }
+        const lineSet = new Set(combo.map((line) => line.idx));
+        const eliminations: CellPointer[] = [];
+        if (orientation === 'row') {
+          for (let row = 0; row < 9; row += 1) {
+            if (lineSet.has(row)) {
+              continue;
+            }
+            union.forEach((col) => {
+              const cell = board[row][col];
+              if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+                eliminations.push({ row, col });
+              }
+            });
+          }
+        } else {
+          for (let col = 0; col < 9; col += 1) {
+            if (lineSet.has(col)) {
+              continue;
+            }
+            union.forEach((row) => {
+              const cell = board[row][col];
+              if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+                eliminations.push({ row, col });
+              }
+            });
+          }
+        }
+        if (eliminations.length === 0) {
+          continue;
+        }
+        const baseCells: CellPointer[] = [];
+        combo.forEach(({ idx, positions }) => {
+          positions.forEach((p) => {
+            baseCells.push(orientation === 'row' ? { row: idx, col: p } : { row: p, col: idx });
+          });
+        });
+        return {
+          type,
+          title: `${title} (${orientation === 'row' ? 'rows' : 'columns'})`,
+          message: `${title} on digit ${digit}. Remove ${digit} from highlighted peer cells.`,
+          cells: [...baseCells, ...eliminations],
+        };
+      }
+    }
+    return null;
+  };
+
+  return findInOrientation('row') ?? findInOrientation('col');
+};
+
+const detectXYWing: HintDetector = (board) => {
+  const peersOf = (row: number, col: number) => new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col)));
+  const bivalueCells: { row: number; col: number; candidates: number[]; peers: Set<string> }[] = [];
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell) && cell.candidates.length === 2) {
+        bivalueCells.push({ row, col, candidates: [...cell.candidates], peers: peersOf(row, col) });
+      }
+    }
+  }
+
+  for (const pivot of bivalueCells) {
+    const [x, y] = pivot.candidates;
+    const wingX = bivalueCells.filter(
+      (cell) =>
+        cell !== pivot &&
+        cell.candidates.includes(x) &&
+        !cell.candidates.includes(y) &&
+        pivot.peers.has(createCellKey(cell.row, cell.col)),
+    );
+    const wingY = bivalueCells.filter(
+      (cell) =>
+        cell !== pivot &&
+        cell.candidates.includes(y) &&
+        !cell.candidates.includes(x) &&
+        pivot.peers.has(createCellKey(cell.row, cell.col)),
+    );
+    for (const a of wingX) {
+      for (const b of wingY) {
+        if (a.row === b.row && a.col === b.col) {
+          continue;
+        }
+        const zCandidates = [...a.candidates, ...b.candidates].filter((digit) => digit !== x && digit !== y);
+        const z = zCandidates.length === 1 ? zCandidates[0] : null;
+        if (!z) {
+          continue;
+        }
+        const intersection = new Set<string>();
+        a.peers.forEach((peer) => {
+          if (b.peers.has(peer)) {
+            intersection.add(peer);
+          }
+        });
+        const eliminations: CellPointer[] = [];
+        intersection.forEach((key) => {
+          const { row, col } = parseCellKey(key);
+          const cell = board[row][col];
+          if (isEditableCell(cell) && cell.candidates.includes(z)) {
+            eliminations.push({ row, col });
+          }
+        });
+        if (eliminations.length > 0) {
+          return {
+            type: 'xy-wing',
+            title: 'XY-Wing',
+            message: `Pivot ${x}/${y} links wings to eliminate ${z} from shared peers.`,
+            cells: [
+              { row: pivot.row, col: pivot.col },
+              { row: a.row, col: a.col },
+              { row: b.row, col: b.col },
+              ...eliminations,
+            ],
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const detectXYZWing: HintDetector = (board) => {
+  const peersOf = (row: number, col: number) => new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col)));
+  const pivotCells: { row: number; col: number; candidates: number[]; peers: Set<string> }[] = [];
+  const bivalue: { row: number; col: number; candidates: number[]; peers: Set<string> }[] = [];
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (!isEditableCell(cell)) {
+        continue;
+      }
+      const peers = peersOf(row, col);
+      if (cell.candidates.length === 3) {
+        pivotCells.push({ row, col, candidates: [...cell.candidates], peers });
+      } else if (cell.candidates.length === 2) {
+        bivalue.push({ row, col, candidates: [...cell.candidates], peers });
+      }
+    }
+  }
+
+  for (const pivot of pivotCells) {
+    const wings = bivalue.filter((cell) => pivot.peers.has(createCellKey(cell.row, cell.col)) && cell.candidates.every((d) => pivot.candidates.includes(d)));
+    if (wings.length < 2) {
+      continue;
+    }
+    for (const [w1, w2] of combinations(wings, 2)) {
+      const shared = w1.candidates.filter((d) => w2.candidates.includes(d) && pivot.candidates.includes(d));
+      if (shared.length !== 1) {
+        continue;
+      }
+      const targetDigit = shared[0];
+      const intersection = new Set<string>();
+      w1.peers.forEach((peer) => {
+        if (w2.peers.has(peer) && pivot.peers.has(peer)) {
+          intersection.add(peer);
+        }
+      });
+      const eliminations: CellPointer[] = [];
+      intersection.forEach((key) => {
+        const { row, col } = parseCellKey(key);
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(targetDigit)) {
+          eliminations.push({ row, col });
+        }
+      });
+      if (eliminations.length > 0) {
+        return {
+          type: 'xyz-wing',
+          title: 'XYZ-Wing',
+          message: `XYZ-Wing pivots on ${targetDigit}. Remove ${targetDigit} from cells seeing all three.`,
+          cells: [
+            { row: pivot.row, col: pivot.col },
+            { row: w1.row, col: w1.col },
+            { row: w2.row, col: w2.col },
+            ...eliminations,
+          ],
+        };
+      }
+    }
+  }
+  return null;
 };

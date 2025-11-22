@@ -1870,10 +1870,13 @@ const detectXYWing: HintDetector = (board) => {
           }
         });
         if (eliminations.length > 0) {
+          const pivotLabel = createCellLabel(pivot.row, pivot.col);
+          const wingALabel = createCellLabel(a.row, a.col);
+          const wingBLabel = createCellLabel(b.row, b.col);
           return {
             type: 'xy-wing',
             title: 'XY-Wing',
-            message: `Pivot ${x}/${y} links wings to eliminate ${z} from shared peers.`,
+            message: `Pivot ${pivotLabel} (${x}/${y}) links ${wingALabel} (${x}/${z}) and ${wingBLabel} (${y}/${z}). Remove ${z} from any cell seeing both wings.`,
             cells: [
               { row: pivot.row, col: pivot.col },
               { row: a.row, col: a.col },

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   applyHintToBoard,
   detectPeerElimination,
-  detectForcingChains,
   detectLockedCandidatesClaiming,
   detectXYWing,
   detectHiddenSet,

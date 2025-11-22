@@ -1029,18 +1029,17 @@ function App() {
       setStatus('No hint selected.');
       return;
     }
-    let result: { message: string; changed: boolean } | null = null;
+    let hintMessage = '';
     recordSnapshot();
     commitBoardChange(
       (draft) => {
-        result = applyHintToBoard(draft, activeHint);
+        const result = applyHintToBoard(draft, activeHint);
+        hintMessage = result.message;
       },
-      () => result?.message ?? '',
+      () => hintMessage,
     );
     setActiveHint(null);
-    if (result) {
-      setStatus(result.message);
-    }
+    setStatus(hintMessage);
   };
 
   const solved = useMemo(() => {

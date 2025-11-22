@@ -2349,51 +2349,23 @@ const detectRemotePair: HintDetector = (board) => {
     for (let col = 0; col < 9; col += 1) {
       const cell = board[row][col];
       if (isEditableCell(cell) && cell.candidates.length === 2) {
-        pairs.push({ row, col, candidates: [...cell.candidates], peers: new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col))) });
+        pairs.push({
+          row,
+          col,
+          candidates: [...cell.candidates],
+          peers: new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col))),
+        });
       }
     }
   }
 
-  const adj: Map<string, string[]> = new Map();
-  pairs.forEach((cell) => {
-    const key = createCellKey(cell.row, cell.col);
-    const neighbors: string[] = [];
-    pairs.forEach((other) => {
-      if (cell === other) return;
-      if (cell.candidates[0] === other.candidates[0] && cell.candidates[1] === other.candidates[1]) {
-        if (cell.peers.has(createCellKey(other.row, other.col))) {
-          neighbors.push(createCellKey(other.row, other.col));
-        }
-      }
-    });
-    adj.set(key, neighbors);
-  });
-
-  const bfs = (start: string): Map<string, number> => {
-    const dist = new Map<string, number>();
-    dist.set(start, 0);
-    const queue = [start];
-    while (queue.length) {
-      const current = queue.shift() as string;
-      const next = adj.get(current) ?? [];
-      next.forEach((neighbor) => {
-        if (!dist.has(neighbor)) {
-          dist.set(neighbor, (dist.get(current) as number) + 1);
-          queue.push(neighbor);
-        }
-      });
-    }
-    return dist;
-  };
-
-  for (const start of adj.keys()) {
-    const distances = bfs(start);
-    for (const [target, length] of distances.entries()) {
-      if (length === 0 || length % 2 === 0) {
+  for (let i = 0; i < pairs.length; i += 1) {
+    for (let j = i + 1; j < pairs.length; j += 1) {
+      const a = pairs[i];
+      const b = pairs[j];
+      if (a.candidates[0] !== b.candidates[0] || a.candidates[1] !== b.candidates[1]) {
         continue;
       }
-      const a = pairs.find((cell) => createCellKey(cell.row, cell.col) === start)!;
-      const b = pairs.find((cell) => createCellKey(cell.row, cell.col) === target)!;
       if (a.peers.has(createCellKey(b.row, b.col))) {
         continue;
       }
@@ -2403,6 +2375,9 @@ const detectRemotePair: HintDetector = (board) => {
           intersection.add(peer);
         }
       });
+      if (intersection.size === 0) {
+        continue;
+      }
       const eliminations: CellPointer[] = [];
       intersection.forEach((key) => {
         const { row, col } = parseCellKey(key);
@@ -2411,20 +2386,22 @@ const detectRemotePair: HintDetector = (board) => {
           eliminations.push({ row, col });
         }
       });
-        if (eliminations.length > 0) {
-          return {
-            type: 'remote-pair',
-            title: 'Remote Pair',
-            message: `Odd-length chain of pairs ${a.candidates.join('/')} forces eliminations in overlapping peers.`,
-            cells: [
-              { row: a.row, col: a.col },
-              { row: b.row, col: b.col },
-              ...eliminations,
-            ],
-          digit: undefined,
-          eliminationStartIndex: 2,
-          };
-        }
+      if (eliminations.length === 0) {
+        continue;
+      }
+      return {
+        type: 'remote-pair',
+        title: 'Remote Pair',
+        message: `Remote pair on ${a.candidates.join('/')} eliminates those digits from shared peers.`,
+        cells: [
+          { row: a.row, col: a.col },
+          { row: b.row, col: b.col },
+        ],
+        digit: undefined,
+        eliminations,
+        eliminationDigits: [...a.candidates],
+        eliminationStartIndex: 2,
+      };
     }
   }
   return null;

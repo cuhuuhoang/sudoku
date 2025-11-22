@@ -38,6 +38,7 @@ interface Hint {
   digit?: number;
   eliminationStartIndex?: number;
   eliminations?: CellPointer[];
+  eliminationDigits?: number[];
 }
 
 interface CellState {
@@ -1860,6 +1861,13 @@ const detectNakedSet = (board: CellState[][], size: number, type: HintType, titl
         title: `${title} (${label})`,
         message: `${title} with digits ${Array.from(union).join(', ')} in ${label}. Remove those digits from other cells in the same ${label.includes('row') ? 'row' : label.includes('column') ? 'column' : 'box'}.`,
         cells: combo.map(({ row, col }) => ({ row, col })),
+        digit: undefined,
+        eliminations: coords
+          .filter(({ row, col }) => !comboKeys.has(createCellKey(row, col)))
+          .filter(({ row, col }) => isEditableCell(board[row][col]) && board[row][col].candidates.some((digit) => union.has(digit)))
+          .map(({ row, col }) => ({ row, col })),
+        eliminationStartIndex: combo.length,
+        eliminationDigits: Array.from(union),
       };
     }
     return null;
@@ -2779,6 +2787,7 @@ const detectForcingChains = (board: CellState[][], maxDepth: number): Hint | nul
 
 const applyHintToBoard = (working: CellState[][], hint: Hint): { message: string; changed: boolean } => {
   const targetDigit = hint.digit;
+  const eliminationDigits = hint.eliminationDigits ?? (targetDigit !== undefined ? [targetDigit] : []);
   if (hint.cells.length === 0) {
     return { message: 'No cells to apply.', changed: false };
   }
@@ -2797,27 +2806,30 @@ const applyHintToBoard = (working: CellState[][], hint: Hint): { message: string
     };
   }
 
-  if (targetDigit === undefined) {
-    return { message: 'Apply is unavailable for this hint type.', changed: false };
-  }
-
   const start = hint.eliminationStartIndex ?? (hint.cells.length > 1 ? 1 : 0);
   const eliminationCells = hint.eliminations ?? hint.cells.slice(start);
   if (eliminationCells.length === 0) {
     return { message: 'No elimination targets in this hint.', changed: false };
   }
+  if (eliminationDigits.length === 0) {
+    return { message: 'Apply is unavailable for this hint type.', changed: false };
+  }
 
   let removed = 0;
   eliminationCells.forEach(({ row, col }) => {
     const cell = working[row]?.[col];
-    if (cell && isEditableCell(cell) && cell.candidates.includes(targetDigit)) {
-      cell.candidates = cell.candidates.filter((d) => d !== targetDigit);
-      removed += 1;
+    if (cell && isEditableCell(cell)) {
+      eliminationDigits.forEach((digit) => {
+        if (cell.candidates.includes(digit)) {
+          cell.candidates = cell.candidates.filter((d) => d !== digit);
+          removed += 1;
+        }
+      });
     }
   });
 
   return {
-    message: removed ? `Removed ${targetDigit} from ${removed} cell${removed > 1 ? 's' : ''}.` : 'No candidates to remove.',
+    message: removed ? `Removed ${eliminationDigits.join(', ')} from ${removed} candidate${removed > 1 ? 's' : ''}.` : 'No candidates to remove.',
     changed: removed > 0,
   };
 };

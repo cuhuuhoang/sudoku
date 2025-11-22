@@ -6,6 +6,7 @@ import {
   detectLockedCandidatesClaiming,
   detectWWing,
   detectXYWing,
+  detectNakedSet,
   findHint,
   type CellState,
 } from './App';
@@ -123,5 +124,19 @@ describe('applyHintToBoard', () => {
     expect(result.changed).toBe(true);
     expect(board[1][0].candidates).not.toContain(6);
     expect(board[2][1].candidates).not.toContain(6);
+  });
+
+  it('applies naked set eliminations', () => {
+    const board = makeBoard();
+    board[0][0].candidates = [1, 8];
+    board[0][1].candidates = [1, 8];
+    board[0][2].candidates = [1, 3, 6, 8]; // should lose 1,8
+    const hint = detectNakedSet(board, 2, 'naked-pair', 'Naked Pair');
+    expect(hint?.type).toBe('naked-pair');
+    if (!hint) return;
+    const result = applyHintToBoard(board, hint);
+    expect(result.changed).toBe(true);
+    expect(board[0][2].candidates).not.toContain(1);
+    expect(board[0][2].candidates).not.toContain(8);
   });
 });

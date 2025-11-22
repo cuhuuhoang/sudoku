@@ -748,10 +748,12 @@ function App() {
     startGame(level);
   };
 
-  const handleExportState = () => {
+  const handleExportState = async (copyToClipboard = false) => {
     if (!board.length || !solution.length) {
       setExportText('');
-      setStatus('Start a puzzle to export state.');
+      if (copyToClipboard) {
+        setStatus('Start a puzzle to export state.');
+      }
       return;
     }
     const encoded = encodeGameState({
@@ -761,7 +763,17 @@ function App() {
       level,
     });
     setExportText(encoded);
-    setStatus('State copied to export field.');
+    if (copyToClipboard && isBrowser && encoded) {
+      try {
+        await navigator.clipboard.writeText(encoded);
+        setStatus('State copied to clipboard.');
+      } catch (error) {
+        console.warn('Clipboard copy failed', error);
+        setStatus('Copied to export field. Clipboard unavailable.');
+      }
+    } else if (copyToClipboard) {
+      setStatus('Copied to export field.');
+    }
   };
 
   const handleImportState = () => {
@@ -788,6 +800,13 @@ function App() {
     setStatus('State imported.');
     setIsStateModalOpen(false);
   };
+
+  useEffect(() => {
+    if (isStateModalOpen) {
+      setImportError(null);
+      handleExportState(false);
+    }
+  }, [isStateModalOpen]);
 
   const handleSetValue = (value: number | null) => {
     if (isMultiSelectMode || !selectedCellData || selectedCellData.given || !selectedCell) {
@@ -1217,7 +1236,7 @@ function App() {
               <div className="modal-section">
                 <div className="modal-row">
                   <span className="modal-title">Export</span>
-                  <button onClick={handleExportState} disabled={!board.length || !solution.length}>
+                  <button onClick={() => handleExportState(true)} disabled={!board.length || !solution.length}>
                     Copy state
                   </button>
                 </div>

@@ -240,7 +240,7 @@ button.ghost {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;

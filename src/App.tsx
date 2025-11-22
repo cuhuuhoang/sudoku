@@ -5,10 +5,6 @@ import { Difficulty, generateSudoku } from './lib/sudoku';
 type Screen = 'setup' | 'game';
 type Theme = 'light' | 'dark';
 type FallbackMessage = string | (() => string | undefined);
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-}
 
 interface CellState {
   row: number;
@@ -206,8 +202,6 @@ function App() {
   const isPointerSelecting = useRef(false);
   const dragSelectedKeys = useRef<Set<string>>(new Set<string>());
   const dragMovedRef = useRef(false);
-  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
 
   const resetSelectionState = () => {
     setSelectedCell(null);
@@ -260,25 +254,17 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    if (!isBrowser) {
+    if (!board.length || !solution.length) {
       return;
     }
-    const handleBeforeInstall = (event: Event) => {
-      event.preventDefault();
-      setInstallPromptEvent(event as BeforeInstallPromptEvent);
-    };
-    const handleInstalled = () => {
-      setIsInstalled(true);
-      setInstallPromptEvent(null);
-      setStatus('App installed. Launch it from your apps menu.');
-    };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    window.addEventListener('appinstalled', handleInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      window.removeEventListener('appinstalled', handleInstalled);
-    };
-  }, []);
+    persistGame({
+      board: cloneBoard(board),
+      initialBoard: cloneBoard(initialBoard),
+      solution,
+      level,
+    });
+    setHasSavedGame(true);
+  }, [board, initialBoard, solution, level]);
 
   useEffect(() => {
     const endPointerSelection = (event: PointerEvent) => {
@@ -360,22 +346,6 @@ function App() {
     });
   };
 
-  const handleInstallApp = async () => {
-    if (!installPromptEvent) {
-      return;
-    }
-    try {
-      await installPromptEvent.prompt();
-      const { outcome } = await installPromptEvent.userChoice;
-      setStatus(outcome === 'accepted' ? 'Thanks for installing the app!' : 'Install dismissed.');
-    } catch (error) {
-      console.error(error);
-      setStatus('Unable to show the install prompt.');
-    } finally {
-      setInstallPromptEvent(null);
-    }
-  };
-
   const recordSnapshot = () => {
     if (!board.length) {
       return;
@@ -409,7 +379,6 @@ function App() {
   const commitBoardChange = (mutator: (draft: CellState[][]) => void, fallbackMessage?: FallbackMessage) => {
     let promotions = 0;
     let resolvedFallback: string | undefined;
-    let processedBoard: CellState[][] | null = null;
     setBoard((prev) => {
       const next = cloneBoard(prev);
       mutator(next);
@@ -417,18 +386,8 @@ function App() {
       promotions = promoted;
       resolvedFallback =
         typeof fallbackMessage === 'function' ? fallbackMessage() : fallbackMessage ?? undefined;
-      processedBoard = processed;
       return processed;
     });
-    if (processedBoard) {
-      persistGame({
-        board: processedBoard,
-        initialBoard,
-        solution,
-        level,
-      });
-      setHasSavedGame(true);
-    }
     if (promotions > 0) {
       setStatus(`Auto promoted ${promotions} single${promotions > 1 ? 's' : ''}.`);
     } else if (resolvedFallback) {
@@ -617,9 +576,6 @@ function App() {
           {isGenerating && <p className="muted">{status}</p>}
           <button className="theme-toggle" onClick={toggleTheme}>
             {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
-          </button>
-          <button className="ghost install-button" onClick={handleInstallApp} disabled={!installPromptEvent}>
-            {isInstalled ? 'Installed' : 'Install App'}
           </button>
         </div>
       )}
@@ -829,9 +785,6 @@ function App() {
           <p className="status">{status || (solved ? 'Puzzle solved! Great job.' : 'Stay focused and have fun!')}</p>
           <button className="theme-toggle" onClick={toggleTheme}>
             {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
-          </button>
-          <button className="ghost install-button" onClick={handleInstallApp} disabled={!installPromptEvent}>
-            {isInstalled ? 'Installed' : 'Install App'}
           </button>
         </div>
       )}

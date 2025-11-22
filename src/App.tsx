@@ -885,6 +885,8 @@ function App() {
       }
     } else if (copyToClipboard) {
       setStatus('Copied to export field.');
+    } else {
+      setStatus('State copied to export field.');
     }
   };
 

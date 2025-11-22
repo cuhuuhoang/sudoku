@@ -135,7 +135,7 @@ button.ghost {
   border: 1px solid var(--tile-border);
   border-radius: 6px;
   background: var(--tile-bg);
-  padding: 0;
+  padding: 0.08rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,6 +162,12 @@ button.ghost {
 .cell-value {
   font-size: clamp(1.6rem, 5.5vw, 2.6rem);
   font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .candidates {
@@ -172,14 +178,16 @@ button.ghost {
   grid-template-rows: repeat(3, 1fr);
   font-size: clamp(0.55rem, 2vw, 0.85rem);
   color: var(--candidate-color);
-  padding: 0.1rem;
+  padding: 0.05rem;
   box-sizing: border-box;
+  gap: 0.05rem;
 }
 
 .candidate {
   display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
   opacity: 0.25;
 }
 
@@ -337,6 +345,19 @@ button.ghost {
 
   .board-stack {
     width: 100%;
+  }
+
+  .cell {
+    padding: 0.05rem;
+  }
+
+  .candidates {
+    font-size: clamp(0.5rem, 3vw, 0.7rem);
+    padding: 0.03rem;
+  }
+
+  .cell-value {
+    font-size: clamp(1.3rem, 9vw, 2.2rem);
   }
 }
 

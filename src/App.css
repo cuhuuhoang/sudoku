@@ -283,11 +283,6 @@ button.ghost {
   background: var(--pad-column-bg);
 }
 
-.clear-button {
-  width: 100%;
-  justify-content: center;
-}
-
 .hint-panel {
   margin-top: 0.75rem;
   display: flex;

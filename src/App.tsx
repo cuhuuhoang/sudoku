@@ -828,15 +828,6 @@ function App() {
                 </div>
               </div>
 
-              <button
-                className="ghost clear-button"
-                onClick={() => handleSetValue(null)}
-                disabled={
-                  isMultiSelectMode || !selectedCellData || selectedCellData.given || selectedCellData.value === null
-                }
-              >
-                Clear Value
-              </button>
               <div className="hint-panel mobile-only">
                 <button className="ghost hint-button" onClick={handleHint} disabled={!board.length}>
                   Show Hint

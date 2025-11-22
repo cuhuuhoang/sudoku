@@ -195,6 +195,37 @@ describe('hint detectors', () => {
     expect(hint?.type).toBe('w-wing');
   });
 
+  it('detects W-Wing with column link and eliminations', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 6]); // wing A
+    setCandidates(board, 2, 0, [1, 6]); // wing B (same column, different box)
+    setCandidates(board, 1, 0, [6]); // elimination target sees both wings
+    const hint = detectWWing(board);
+    expect(hint?.type).toBe('w-wing');
+    expect(hint?.digit).toBe(6);
+    expect(hint?.cells.slice(0, 2)).toEqual([
+      { row: 0, col: 0 },
+      { row: 2, col: 0 },
+    ]);
+  });
+
+  it('detects W-Wing with row link and eliminations', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 1, [2, 5]); // wing A
+    setCandidates(board, 0, 4, [2, 5]); // wing B (same row, different box)
+    setCandidates(board, 0, 7, [5]); // elimination target sees both wings
+    const hint = detectWWing(board);
+    expect(hint?.type).toBe('w-wing');
+    expect(hint?.digit).toBe(5);
+  });
+
+  it('does not detect W-Wing without a strong link', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]);
+    setCandidates(board, 1, 1, [1, 2]); // no strong link on either digit
+    expect(detectWWing(board)).toBeNull();
+  });
+
   it('detects Remote Pair', () => {
     const board = makeBoard();
     setCandidates(board, 0, 0, [1, 2]); // endpoint A

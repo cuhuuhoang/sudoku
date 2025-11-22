@@ -2344,9 +2344,6 @@ const detectWWing: HintDetector = (board) => {
     for (let j = i + 1; j < pairs.length; j += 1) {
       const a = pairs[i];
       const b = pairs[j];
-      if (a.row === b.row || a.col === b.col) {
-        continue;
-      }
       const [x1, y1] = a.candidates.sort();
       const [x2, y2] = b.candidates.sort();
       if (x1 !== x2 || y1 !== y2) {

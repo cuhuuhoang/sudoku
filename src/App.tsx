@@ -4,6 +4,7 @@ import { Difficulty, generateSudoku } from './lib/sudoku';
 
 type Screen = 'setup' | 'game';
 type Theme = 'light' | 'dark';
+type FallbackMessage = string | (() => string | undefined);
 
 interface CellState {
   row: number;
@@ -28,6 +29,11 @@ interface SavedGame {
 const STORAGE_KEY = 'sudoku-current-game-v1';
 const THEME_KEY = 'sudoku-theme';
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const createCellKey = (row: number, col: number) => `${row}-${col}`;
+const parseCellKey = (key: string): CellPointer => {
+  const [row, col] = key.split('-').map(Number);
+  return { row, col };
+};
 
 const difficultyOptions: { id: Difficulty; title: string; subtitle: string }[] = [
   { id: 'easy', title: 'Easy', subtitle: 'Gentle starter – plenty of givens.' },
@@ -189,6 +195,19 @@ function App() {
   const hasRestored = useRef(false);
   const [theme, setTheme] = useState<Theme>('light');
   const [history, setHistory] = useState<CellState[][][]>([]);
+  const [multiSelectedKeys, setMultiSelectedKeys] = useState<Set<string>>(() => new Set<string>());
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const padRef = useRef<HTMLDivElement | null>(null);
+  const isPointerSelecting = useRef(false);
+  const dragSelectedKeys = useRef<Set<string>>(new Set<string>());
+  const dragMovedRef = useRef(false);
+
+  const resetSelectionState = () => {
+    setSelectedCell(null);
+    setIsMultiSelectMode(false);
+    setMultiSelectedKeys(new Set<string>());
+  };
 
   useEffect(() => {
     if (hasRestored.current) {
@@ -205,7 +224,7 @@ function App() {
       setSolution(saved.solution);
       setLevel(saved.level);
       setScreen('game');
-      setSelectedCell(null);
+      resetSelectionState();
       setStatus(
         promoted
           ? `Resumed & auto promoted ${promoted} single${promoted > 1 ? 's' : ''}.`
@@ -234,6 +253,69 @@ function App() {
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
+  useEffect(() => {
+    const endPointerSelection = (event: PointerEvent) => {
+      isPointerSelecting.current = false;
+      dragSelectedKeys.current.clear();
+      if (boardRef.current && !boardRef.current.contains(event.target as Node)) {
+        dragMovedRef.current = false;
+      }
+    };
+    document.addEventListener('pointerup', endPointerSelection);
+    document.addEventListener('pointercancel', endPointerSelection);
+    return () => {
+      document.removeEventListener('pointerup', endPointerSelection);
+      document.removeEventListener('pointercancel', endPointerSelection);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMultiSelectMode) {
+      return;
+    }
+    const handlePointerDownOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      const insideBoard = boardRef.current?.contains(target);
+      const insidePad = padRef.current?.contains(target);
+      if (insideBoard || insidePad) {
+        return;
+      }
+      resetSelectionState();
+    };
+    document.addEventListener('pointerdown', handlePointerDownOutside);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutside);
+    };
+  }, [isMultiSelectMode]);
+
+  useEffect(() => {
+    if (!isMultiSelectMode) {
+      return;
+    }
+    setMultiSelectedKeys((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((key) => {
+        const { row, col } = parseCellKey(key);
+        const cell = board[row]?.[col];
+        if (cell && !cell.given && cell.value === null) {
+          next.add(key);
+        } else {
+          changed = true;
+        }
+      });
+      if (!changed && next.size === prev.size) {
+        return prev;
+      }
+      if (next.size === 0) {
+        setIsMultiSelectMode(false);
+        setSelectedCell(null);
+        return next;
+      }
+      return next;
+    });
+  }, [board, isMultiSelectMode]);
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
@@ -259,26 +341,31 @@ function App() {
     const previous = history[history.length - 1];
     setBoard(cloneBoard(previous));
     setHistory((prev) => prev.slice(0, -1));
-    setSelectedCell(null);
+    resetSelectionState();
     setStatus('Reverted last manual change.');
   };
 
-  const selectedCellData = selectedCell ? board[selectedCell.row]?.[selectedCell.col] ?? null : null;
+  const selectedCellData =
+    selectedCell && !isMultiSelectMode ? board[selectedCell.row]?.[selectedCell.col] ?? null : null;
   const canUndo = history.length > 0;
+  const multiSelectionHasEditableCells = isMultiSelectMode && multiSelectedKeys.size > 0;
 
-  const commitBoardChange = (mutator: (draft: CellState[][]) => void, fallbackMessage?: string) => {
+  const commitBoardChange = (mutator: (draft: CellState[][]) => void, fallbackMessage?: FallbackMessage) => {
     let promotions = 0;
+    let resolvedFallback: string | undefined;
     setBoard((prev) => {
       const next = cloneBoard(prev);
       mutator(next);
       const { board: processed, promoted } = runAutomation(next);
       promotions = promoted;
+      resolvedFallback =
+        typeof fallbackMessage === 'function' ? fallbackMessage() : fallbackMessage ?? undefined;
       return processed;
     });
     if (promotions > 0) {
       setStatus(`Auto promoted ${promotions} single${promotions > 1 ? 's' : ''}.`);
-    } else if (fallbackMessage) {
-      setStatus(fallbackMessage);
+    } else if (resolvedFallback) {
+      setStatus(resolvedFallback);
     } else {
       setStatus('');
     }
@@ -287,7 +374,7 @@ function App() {
   const startGame = (difficulty: Difficulty) => {
     setIsGenerating(true);
     setStatus('Generating puzzle...');
-    setSelectedCell(null);
+    resetSelectionState();
 
     try {
       const { puzzle, solution } = generateSudoku(difficulty);
@@ -322,7 +409,7 @@ function App() {
     setSolution(saved.solution);
     setLevel(saved.level);
     setScreen('game');
-    setSelectedCell(null);
+    resetSelectionState();
     setHistory([]);
     setStatus(
       promoted ? `Loaded & auto promoted ${promoted} single${promoted > 1 ? 's' : ''}.` : 'Loaded saved puzzle.',
@@ -342,7 +429,7 @@ function App() {
 
     const { board: refreshedBoard, promoted } = runAutomation(cloneBoard(initialBoard));
     setBoard(refreshedBoard);
-    setSelectedCell(null);
+    resetSelectionState();
     setHistory([]);
     setStatus(
       promoted ? `Board reset with ${promoted} auto single${promoted > 1 ? 's' : ''}.` : 'Board reset to start.',
@@ -373,7 +460,7 @@ function App() {
   };
 
   const handleSetValue = (value: number | null) => {
-    if (!selectedCellData || selectedCellData.given || !selectedCell) {
+    if (isMultiSelectMode || !selectedCellData || selectedCellData.given || !selectedCell) {
       return;
     }
     recordSnapshot();
@@ -390,6 +477,32 @@ function App() {
   };
 
   const handleToggleCandidate = (value: number) => {
+    if (isMultiSelectMode) {
+      if (!multiSelectionHasEditableCells) {
+        setStatus('Select editable tiles to remove candidates.');
+        return;
+      }
+      recordSnapshot();
+      let removedAny = false;
+      commitBoardChange(
+        (draft) => {
+          multiSelectedKeys.forEach((key) => {
+            const { row, col } = parseCellKey(key);
+            const cell = draft[row]?.[col];
+            if (!cell || cell.given || cell.value !== null) {
+              return;
+            }
+            if (cell.candidates.includes(value)) {
+              cell.candidates = cell.candidates.filter((candidate) => candidate !== value);
+              removedAny = true;
+            }
+          });
+        },
+        () => (removedAny ? `Removed ${value} from selection.` : 'No matching candidates to remove.'),
+      );
+      return;
+    }
+
     if (!selectedCellData || selectedCellData.given || selectedCellData.value !== null || !selectedCell) {
       return;
     }
@@ -410,7 +523,7 @@ function App() {
   const handleBackToLevels = () => {
     setScreen('setup');
     setStatus('Pick a level to play.');
-    setSelectedCell(null);
+    resetSelectionState();
   };
 
   const solved = useMemo(() => {
@@ -467,10 +580,15 @@ function App() {
 
           <div className="play-area">
             <div className="board-stack">
-              <div className="board-grid">
+              <div className="board-grid" ref={boardRef}>
                 {board.flatMap((row, rowIdx) =>
                   row.map((cell, colIdx) => {
-                    const isSelected = selectedCell?.row === rowIdx && selectedCell?.col === colIdx;
+                    const key = createCellKey(rowIdx, colIdx);
+                    const isEditableCell = !cell.given && cell.value === null;
+                    const isMultiSelected = isMultiSelectMode && isEditableCell && multiSelectedKeys.has(key);
+                    const isSelected =
+                      isMultiSelected ||
+                      (!isMultiSelectMode && selectedCell?.row === rowIdx && selectedCell?.col === colIdx);
                     const classes = ['cell'];
                     if (cell.given) {
                       classes.push('given');
@@ -495,7 +613,68 @@ function App() {
                         key={`cell-${rowIdx}-${colIdx}`}
                         className={classes.join(' ')}
                         style={customBorder}
-                        onClick={() => setSelectedCell({ row: rowIdx, col: colIdx })}
+                        onPointerDown={() => {
+                          isPointerSelecting.current = true;
+                          dragMovedRef.current = false;
+                          dragSelectedKeys.current = isEditableCell ? new Set<string>([key]) : new Set<string>();
+                          if (!isMultiSelectMode) {
+                            setSelectedCell({ row: rowIdx, col: colIdx });
+                          }
+                          if (isMultiSelectMode && isEditableCell) {
+                            setMultiSelectedKeys((prev) => {
+                              const next = new Set(prev);
+                              next.add(key);
+                              return next;
+                            });
+                          }
+                        }}
+                        onPointerEnter={() => {
+                          if (!isPointerSelecting.current) {
+                            return;
+                          }
+                          if (!isEditableCell || dragSelectedKeys.current.has(key)) {
+                            return;
+                          }
+                          dragMovedRef.current = true;
+                          dragSelectedKeys.current.add(key);
+                          if (dragSelectedKeys.current.size > 1 && !isMultiSelectMode) {
+                            setIsMultiSelectMode(true);
+                            setSelectedCell(null);
+                            setMultiSelectedKeys(new Set(dragSelectedKeys.current));
+                          } else if (isMultiSelectMode) {
+                            setMultiSelectedKeys((prev) => {
+                              const next = new Set(prev);
+                              dragSelectedKeys.current.forEach((cellKey) => next.add(cellKey));
+                              return next;
+                            });
+                          }
+                        }}
+                        onClick={() => {
+                          if (dragMovedRef.current) {
+                            dragMovedRef.current = false;
+                            return;
+                          }
+                          if (isMultiSelectMode) {
+                            if (!isEditableCell) {
+                              return;
+                            }
+                            setMultiSelectedKeys((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(key)) {
+                                next.delete(key);
+                              } else {
+                                next.add(key);
+                              }
+                              if (next.size === 0) {
+                                setIsMultiSelectMode(false);
+                                setSelectedCell(null);
+                              }
+                              return next;
+                            });
+                          } else {
+                            setSelectedCell({ row: rowIdx, col: colIdx });
+                          }
+                        }}
                       >
                         {cell.value ? (
                           <span className="cell-value">{cell.value}</span>
@@ -514,7 +693,7 @@ function App() {
                 )}
               </div>
             </div>
-            <div className="pad">
+            <div className="pad" ref={padRef}>
               <div className="pad-row">
                 <div className="pad-column">
                   <p className="section-title">Set Value</p>
@@ -524,7 +703,7 @@ function App() {
                         key={`value-${digit}`}
                         className={selectedCellData?.value === digit ? 'digit active' : 'digit'}
                         onClick={() => handleSetValue(digit)}
-                        disabled={!selectedCellData || selectedCellData.given}
+                        disabled={isMultiSelectMode || !selectedCellData || selectedCellData.given}
                       >
                         {digit}
                       </button>
@@ -534,15 +713,24 @@ function App() {
 
                 <div className="pad-column">
                   <p className="section-title">Candidates</p>
+                  {isMultiSelectMode && (
+                    <p className="muted" style={{ fontSize: '0.8rem', marginTop: '-0.25rem' }}>
+                      Multi-select: tap digits to remove from highlighted tiles.
+                    </p>
+                  )}
                   <div className="digit-matrix">
                     {DIGITS.map((digit) => {
-                      const isOn = selectedCellData?.candidates.includes(digit);
+                      const isOn = !isMultiSelectMode && selectedCellData?.candidates.includes(digit);
                       return (
                         <button
                           key={`cand-${digit}`}
                           className={isOn ? 'digit active' : 'digit'}
                           onClick={() => handleToggleCandidate(digit)}
-                          disabled={!selectedCellData || selectedCellData.given || selectedCellData.value !== null}
+                          disabled={
+                            isMultiSelectMode
+                              ? !multiSelectionHasEditableCells
+                              : !selectedCellData || selectedCellData.given || selectedCellData.value !== null
+                          }
                         >
                           {digit}
                         </button>
@@ -555,7 +743,9 @@ function App() {
               <button
                 className="ghost clear-button"
                 onClick={() => handleSetValue(null)}
-                disabled={!selectedCellData || selectedCellData.given || selectedCellData.value === null}
+                disabled={
+                  isMultiSelectMode || !selectedCellData || selectedCellData.given || selectedCellData.value === null
+                }
               >
                 Clear Value
               </button>

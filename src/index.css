@@ -21,6 +21,8 @@
   --pad-column-bg: rgba(255, 255, 255, 0.9);
   --status-text: #475569;
   --warning-bg: rgba(248, 113, 113, 0.2);
+  --selected-bg: rgba(59, 130, 246, 0.15);
+  --selected-outline: rgba(59, 130, 246, 0.7);
 }
 
 [data-theme='dark'] {
@@ -41,6 +43,8 @@
   --pad-column-bg: rgba(30, 41, 59, 0.95);
   --status-text: #cbd5f5;
   --warning-bg: rgba(248, 113, 113, 0.35);
+  --selected-bg: rgba(99, 102, 241, 0.25);
+  --selected-outline: rgba(147, 197, 253, 0.9);
 }
 
 * {

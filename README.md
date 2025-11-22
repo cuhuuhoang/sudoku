@@ -1,4 +1,4 @@
-# Sudoku Trainer
+![img.png](img.png)# Sudoku Trainer
 
 A touch-friendly React + Vite Sudoku trainer that runs on port 7203 and adapts to Chrome and mobile browsers. Features include difficulty selection, auto-generated puzzles, candidate management, undo history, save/load via local storage, and a light/dark mode toggle to conserve device power.
 

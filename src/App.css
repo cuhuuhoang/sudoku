@@ -151,6 +151,8 @@ button.ghost {
 }
 
 .cell.selected {
+  background: var(--selected-bg);
+  box-shadow: 0 0 0 2px var(--selected-outline) inset;
 }
 
 .cell.warning {

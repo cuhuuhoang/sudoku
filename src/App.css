@@ -309,6 +309,10 @@ button.ghost {
   color: var(--subtext);
   border: 1px solid var(--tile-border);
 }
+.install-button {
+  margin-top: 0.5rem;
+  width: 100%;
+}
 
 @media (max-width: 640px) {
   .app-shell {

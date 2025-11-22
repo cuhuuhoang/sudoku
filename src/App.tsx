@@ -5,6 +5,10 @@ import { Difficulty, generateSudoku } from './lib/sudoku';
 type Screen = 'setup' | 'game';
 type Theme = 'light' | 'dark';
 type FallbackMessage = string | (() => string | undefined);
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
 
 interface CellState {
   row: number;
@@ -202,6 +206,8 @@ function App() {
   const isPointerSelecting = useRef(false);
   const dragSelectedKeys = useRef<Set<string>>(new Set<string>());
   const dragMovedRef = useRef(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
 
   const resetSelectionState = () => {
     setSelectedCell(null);
@@ -252,6 +258,27 @@ function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!isBrowser) {
+      return;
+    }
+    const handleBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+    const handleInstalled = () => {
+      setIsInstalled(true);
+      setInstallPromptEvent(null);
+      setStatus('App installed. Launch it from your apps menu.');
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
 
   useEffect(() => {
     const endPointerSelection = (event: PointerEvent) => {
@@ -331,6 +358,22 @@ function App() {
       }
       return next;
     });
+  };
+
+  const handleInstallApp = async () => {
+    if (!installPromptEvent) {
+      return;
+    }
+    try {
+      await installPromptEvent.prompt();
+      const { outcome } = await installPromptEvent.userChoice;
+      setStatus(outcome === 'accepted' ? 'Thanks for installing the app!' : 'Install dismissed.');
+    } catch (error) {
+      console.error(error);
+      setStatus('Unable to show the install prompt.');
+    } finally {
+      setInstallPromptEvent(null);
+    }
   };
 
   const recordSnapshot = () => {
@@ -579,6 +622,9 @@ function App() {
           <button className="theme-toggle" onClick={toggleTheme}>
             {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
           </button>
+          <button className="ghost install-button" onClick={handleInstallApp} disabled={!installPromptEvent}>
+            {isInstalled ? 'Installed' : 'Install App'}
+          </button>
         </div>
       )}
 
@@ -788,6 +834,9 @@ function App() {
           <p className="status">{status || (solved ? 'Puzzle solved! Great job.' : 'Stay focused and have fun!')}</p>
           <button className="theme-toggle" onClick={toggleTheme}>
             {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
+          </button>
+          <button className="ghost install-button" onClick={handleInstallApp} disabled={!installPromptEvent}>
+            {isInstalled ? 'Installed' : 'Install App'}
           </button>
         </div>
       )}

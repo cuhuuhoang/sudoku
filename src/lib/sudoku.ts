@@ -5,28 +5,18 @@ export interface GeneratedSudoku {
   solution: number[][];
 }
 
-type ExternalSudoku =
-  | {
-      makepuzzle: () => (number | null)[];
-      solvepuzzle: (puzzle: (number | null)[]) => (number | null)[];
-    }
-  | null;
+import * as sudokuLib from 'sudoku';
 
-// Attempt to load external generator if installed.
-const loadExternalSudoku = (): ExternalSudoku => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require('sudoku') as ExternalSudoku;
-    if (mod && typeof mod.makepuzzle === 'function' && typeof mod.solvepuzzle === 'function') {
-      return mod;
-    }
-  } catch (error) {
-    // ignore; caller will surface a friendly error
-  }
-  return null;
-};
+type ExternalSudoku = {
+  makepuzzle: () => (number | null)[];
+  solvepuzzle: (puzzle: (number | null)[]) => (number | null)[];
+} | null;
 
-const externalSudoku = loadExternalSudoku();
+// Vite bundles the library; if missing, surface a clear error immediately.
+const externalSudoku: ExternalSudoku =
+  sudokuLib && typeof sudokuLib.makepuzzle === 'function' && typeof sudokuLib.solvepuzzle === 'function'
+    ? sudokuLib
+    : null;
 
 export const DIFFICULTY_EMPTY_CELLS: Record<Difficulty, number> = {
   easy: 32,

@@ -1046,6 +1046,9 @@ function App() {
 
 export default App;
 
+export { runAutomation };
+export type { CellState, CellPointer, AutomationSettings };
+
 const isEditableCell = (cell: CellState) => !cell.given && cell.value === null;
 
 const createCellLabel = (row: number, col: number) => `R${row + 1}C${col + 1}`;

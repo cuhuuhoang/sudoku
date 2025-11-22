@@ -288,6 +288,23 @@ button.ghost {
   justify-content: center;
 }
 
+.hint-panel {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.hint-button {
+  width: 100%;
+}
+
+.hint-message {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--subtext);
+}
+
 .status {
   width: 100%;
   margin: 0;

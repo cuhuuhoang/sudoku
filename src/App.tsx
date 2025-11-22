@@ -5,6 +5,28 @@ import { Difficulty, generateSudoku } from './lib/sudoku';
 type Screen = 'setup' | 'game';
 type Theme = 'light' | 'dark';
 type FallbackMessage = string | (() => string | undefined);
+type HintType =
+  | 'naked-single'
+  | 'hidden-single-row'
+  | 'hidden-single-column'
+  | 'hidden-single-box'
+  | 'peer-elimination'
+  | 'locked-pointing'
+  | 'locked-claiming'
+  | 'naked-pair'
+  | 'naked-triple'
+  | 'naked-quad'
+  | 'hidden-pair'
+  | 'hidden-triple'
+  | 'hidden-quad'
+  | 'x-wing';
+
+interface Hint {
+  type: HintType;
+  title: string;
+  message: string;
+  cells: CellPointer[];
+}
 
 interface CellState {
   row: number;
@@ -202,6 +224,7 @@ function App() {
   const isPointerSelecting = useRef(false);
   const dragSelectedKeys = useRef<Set<string>>(new Set<string>());
   const dragMovedRef = useRef(false);
+  const [activeHint, setActiveHint] = useState<Hint | null>(null);
 
   const resetSelectionState = () => {
     setSelectedCell(null);
@@ -341,6 +364,7 @@ function App() {
         setMultiSelectedKeys(new Set<string>());
       } else {
         setMultiSelectedKeys(new Set<string>());
+        setActiveHint(null);
       }
       return next;
     });
@@ -368,6 +392,7 @@ function App() {
     setBoard(cloneBoard(previous));
     setHistory((prev) => prev.slice(0, -1));
     resetSelectionState();
+    setActiveHint(null);
     setStatus('Reverted last manual change.');
   };
 
@@ -412,6 +437,7 @@ function App() {
     setIsGenerating(true);
     setStatus('Generating puzzle...');
     resetSelectionState();
+    setActiveHint(null);
 
     try {
       const { puzzle, solution } = generateSudoku(difficulty);
@@ -447,6 +473,7 @@ function App() {
     setLevel(saved.level);
     setScreen('game');
     resetSelectionState();
+    setActiveHint(null);
     setHistory([]);
     setStatus(
       promoted ? `Loaded & auto promoted ${promoted} single${promoted > 1 ? 's' : ''}.` : 'Loaded saved puzzle.',
@@ -546,6 +573,29 @@ function App() {
     setScreen('setup');
     setStatus('Pick a level to play.');
     resetSelectionState();
+    setActiveHint(null);
+  };
+
+  const handleHint = () => {
+    if (!board.length) {
+      setActiveHint(null);
+      setStatus('Start a puzzle to request hints.');
+      return;
+    }
+    const hint = findHint(board);
+    if (!hint) {
+      setActiveHint(null);
+      setStatus('No hints available right now.');
+      resetSelectionState();
+      return;
+    }
+    setActiveHint(hint);
+    setIsMultiSelectMode(true);
+    const nextKeys = new Set<string>();
+    hint.cells.forEach((cell) => nextKeys.add(createCellKey(cell.row, cell.col)));
+    setMultiSelectedKeys(nextKeys);
+    setSelectedCell(null);
+    setStatus(hint.message);
   };
 
   const solved = useMemo(() => {
@@ -781,6 +831,20 @@ function App() {
               >
                 Clear Value
               </button>
+              <div className="hint-panel">
+                <button className="ghost hint-button" onClick={handleHint} disabled={!board.length}>
+                  Show Hint
+                </button>
+                <p className="hint-message">
+                  {activeHint ? (
+                    <>
+                      <strong>{activeHint.title}:</strong> {activeHint.message}
+                    </>
+                  ) : (
+                    'Tap Hint to highlight a solvable pattern.'
+                  )}
+                </p>
+              </div>
             </div>
 
           <div className="controls">
@@ -804,3 +868,604 @@ function App() {
 }
 
 export default App;
+
+const isEditableCell = (cell: CellState) => !cell.given && cell.value === null;
+
+const createCellLabel = (row: number, col: number) => `R${row + 1}C${col + 1}`;
+
+type HintDetector = (board: CellState[][]) => Hint | null;
+
+const findHint = (board: CellState[][]): Hint | null => {
+  const detectors: HintDetector[] = [
+    detectNakedSingle,
+    detectHiddenSingleRow,
+    detectHiddenSingleColumn,
+    detectHiddenSingleBox,
+    detectPeerElimination,
+    detectLockedCandidatesPointing,
+    detectLockedCandidatesClaiming,
+    (b) => detectNakedSet(b, 2, 'naked-pair', 'Naked Pair'),
+    (b) => detectNakedSet(b, 3, 'naked-triple', 'Naked Triple'),
+    (b) => detectNakedSet(b, 4, 'naked-quad', 'Naked Quad'),
+    (b) => detectHiddenSet(b, 2, 'hidden-pair', 'Hidden Pair'),
+    (b) => detectHiddenSet(b, 3, 'hidden-triple', 'Hidden Triple'),
+    (b) => detectHiddenSet(b, 4, 'hidden-quad', 'Hidden Quad'),
+    detectXWing,
+  ];
+  for (const detector of detectors) {
+    const hint = detector(board);
+    if (hint) {
+      return hint;
+    }
+  }
+  return null;
+};
+
+const detectNakedSingle: HintDetector = (board) => {
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell) && cell.candidates.length === 1) {
+        return {
+          type: 'naked-single',
+          title: 'Single Candidate',
+          message: `${createCellLabel(row, col)} only allows ${cell.candidates[0]}.`,
+          cells: [{ row, col }],
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const detectHiddenSingleRow: HintDetector = (board) => {
+  for (let row = 0; row < 9; row += 1) {
+    for (const digit of DIGITS) {
+      const cells: CellPointer[] = [];
+      for (let col = 0; col < 9; col += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          cells.push({ row, col });
+        }
+      }
+      if (cells.length === 1) {
+        const cell = cells[0];
+        return {
+          type: 'hidden-single-row',
+          title: 'Hidden Single (Row)',
+          message: `Digit ${digit} can only go in ${createCellLabel(cell.row, cell.col)} of row ${row + 1}.`,
+          cells,
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const detectHiddenSingleColumn: HintDetector = (board) => {
+  for (let col = 0; col < 9; col += 1) {
+    for (const digit of DIGITS) {
+      const cells: CellPointer[] = [];
+      for (let row = 0; row < 9; row += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          cells.push({ row, col });
+        }
+      }
+      if (cells.length === 1) {
+        const cell = cells[0];
+        return {
+          type: 'hidden-single-column',
+          title: 'Hidden Single (Column)',
+          message: `Digit ${digit} can only go in ${createCellLabel(cell.row, cell.col)} of column ${col + 1}.`,
+          cells,
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const detectHiddenSingleBox: HintDetector = (board) => {
+  for (let boxRow = 0; boxRow < 3; boxRow += 1) {
+    for (let boxCol = 0; boxCol < 3; boxCol += 1) {
+      for (const digit of DIGITS) {
+        const cells: CellPointer[] = [];
+        for (let row = boxRow * 3; row < boxRow * 3 + 3; row += 1) {
+          for (let col = boxCol * 3; col < boxCol * 3 + 3; col += 1) {
+            const cell = board[row][col];
+            if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+              cells.push({ row, col });
+            }
+          }
+        }
+        if (cells.length === 1) {
+          const cell = cells[0];
+          return {
+            type: 'hidden-single-box',
+            title: 'Hidden Single (Box)',
+            message: `Digit ${digit} fits only in ${createCellLabel(cell.row, cell.col)} of its box.`,
+            cells,
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const getPeerPointers = (row: number, col: number): CellPointer[] => {
+  const peers = new Set<string>();
+  for (let idx = 0; idx < 9; idx += 1) {
+    if (idx !== col) {
+      peers.add(createCellKey(row, idx));
+    }
+    if (idx !== row) {
+      peers.add(createCellKey(idx, col));
+    }
+  }
+  const boxRow = Math.floor(row / 3) * 3;
+  const boxCol = Math.floor(col / 3) * 3;
+  for (let r = boxRow; r < boxRow + 3; r += 1) {
+    for (let c = boxCol; c < boxCol + 3; c += 1) {
+      if (r === row && c === col) {
+        continue;
+      }
+      peers.add(createCellKey(r, c));
+    }
+  }
+  return Array.from(peers).map((key) => parseCellKey(key));
+};
+
+const detectPeerElimination: HintDetector = (board) => {
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (cell.value === null) {
+        continue;
+      }
+      const peers = getPeerPointers(row, col);
+      const offenders = peers.filter((peer) => {
+        const target = board[peer.row][peer.col];
+        return isEditableCell(target) && target.candidates.includes(cell.value as number);
+      });
+      if (offenders.length > 0) {
+        return {
+          type: 'peer-elimination',
+          title: 'Candidate Elimination',
+          message: `Value ${cell.value} at ${createCellLabel(row, col)} lets you remove ${cell.value} from highlighted peers.`,
+          cells: [{ row, col }, ...offenders],
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const detectLockedCandidatesPointing: HintDetector = (board) => {
+  for (let boxRow = 0; boxRow < 3; boxRow += 1) {
+    for (let boxCol = 0; boxCol < 3; boxCol += 1) {
+      const startRow = boxRow * 3;
+      const startCol = boxCol * 3;
+      for (const digit of DIGITS) {
+        const cells: CellPointer[] = [];
+        for (let row = startRow; row < startRow + 3; row += 1) {
+          for (let col = startCol; col < startCol + 3; col += 1) {
+            const cell = board[row][col];
+            if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+              cells.push({ row, col });
+            }
+          }
+        }
+        if (cells.length < 2) {
+          continue;
+        }
+        const rowSet = new Set(cells.map((cell) => cell.row));
+        if (rowSet.size === 1) {
+          const rowIdx = cells[0].row;
+          const eliminationTargets = [];
+          for (let col = 0; col < 9; col += 1) {
+            if (col >= startCol && col < startCol + 3) {
+              continue;
+            }
+            const target = board[rowIdx][col];
+            if (isEditableCell(target) && target.candidates.includes(digit)) {
+              eliminationTargets.push({ row: rowIdx, col });
+            }
+          }
+          if (eliminationTargets.length > 0) {
+            return {
+              type: 'locked-pointing',
+              title: 'Locked Candidates (Pointing)',
+              message: `Digit ${digit} is locked in row ${rowIdx + 1} of this box. Remove ${digit} from other cells in that row.`,
+              cells,
+            };
+          }
+        }
+        const colSet = new Set(cells.map((cell) => cell.col));
+        if (colSet.size === 1) {
+          const colIdx = cells[0].col;
+          const eliminationTargets = [];
+          for (let row = 0; row < 9; row += 1) {
+            if (row >= startRow && row < startRow + 3) {
+              continue;
+            }
+            const target = board[row][colIdx];
+            if (isEditableCell(target) && target.candidates.includes(digit)) {
+              eliminationTargets.push({ row, col: colIdx });
+            }
+          }
+          if (eliminationTargets.length > 0) {
+            return {
+              type: 'locked-pointing',
+              title: 'Locked Candidates (Pointing)',
+              message: `Digit ${digit} is locked in column ${colIdx + 1} of this box. Remove ${digit} from other cells in that column.`,
+              cells,
+            };
+          }
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const detectLockedCandidatesClaiming: HintDetector = (board) => {
+  for (let row = 0; row < 9; row += 1) {
+    for (const digit of DIGITS) {
+      const positions: CellPointer[] = [];
+      for (let col = 0; col < 9; col += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          positions.push({ row, col });
+        }
+      }
+      if (positions.length < 2) {
+        continue;
+      }
+      const boxCols = new Set(positions.map((pos) => Math.floor(pos.col / 3)));
+      if (boxCols.size === 1) {
+        const sample = positions[0];
+        const eliminationTargets = [];
+        const startRow = Math.floor(sample.row / 3) * 3;
+        const startCol = Math.floor(sample.col / 3) * 3;
+        for (let r = startRow; r < startRow + 3; r += 1) {
+          for (let c = startCol; c < startCol + 3; c += 1) {
+            if (r === row) {
+              continue;
+            }
+            const target = board[r][c];
+            if (isEditableCell(target) && target.candidates.includes(digit)) {
+              eliminationTargets.push({ row: r, col: c });
+            }
+          }
+        }
+        if (eliminationTargets.length > 0) {
+          return {
+            type: 'locked-claiming',
+            title: 'Locked Candidates (Claiming)',
+            message: `Digit ${digit} appears only in box ${Math.floor(row / 3) + 1}, so remove it from other cells of that box.`,
+            cells: positions,
+          };
+        }
+      }
+    }
+  }
+  for (let col = 0; col < 9; col += 1) {
+    for (const digit of DIGITS) {
+      const positions: CellPointer[] = [];
+      for (let row = 0; row < 9; row += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          positions.push({ row, col });
+        }
+      }
+      if (positions.length < 2) {
+        continue;
+      }
+      const boxRows = new Set(positions.map((pos) => Math.floor(pos.row / 3)));
+      if (boxRows.size === 1) {
+        const eliminationTargets = [];
+        const startRow = Math.floor(positions[0].row / 3) * 3;
+        const startCol = Math.floor(col / 3) * 3;
+        for (let r = startRow; r < startRow + 3; r += 1) {
+          for (let c = startCol; c < startCol + 3; c += 1) {
+            if (c === col) {
+              continue;
+            }
+            const target = board[r][c];
+            if (isEditableCell(target) && target.candidates.includes(digit)) {
+              eliminationTargets.push({ row: r, col: c });
+            }
+          }
+        }
+        if (eliminationTargets.length > 0) {
+          return {
+            type: 'locked-claiming',
+            title: 'Locked Candidates (Claiming)',
+            message: `Digit ${digit} appears only in column ${col + 1} inside one box. Remove it from other cells of that box.`,
+            cells: positions,
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const unitCoords = {
+  rows: Array.from({ length: 9 }, (_, row) => Array.from({ length: 9 }, (__ , col) => ({ row, col }))),
+  cols: Array.from({ length: 9 }, (_, col) => Array.from({ length: 9 }, (__ , row) => ({ row, col }))),
+  boxes: Array.from({ length: 9 }, (_, idx) => {
+    const boxRow = Math.floor(idx / 3);
+    const boxCol = idx % 3;
+    const coords: CellPointer[] = [];
+    for (let row = boxRow * 3; row < boxRow * 3 + 3; row += 1) {
+      for (let col = boxCol * 3; col < boxCol * 3 + 3; col += 1) {
+        coords.push({ row, col });
+      }
+    }
+    return coords;
+  }),
+};
+
+const combinations = <T,>(arr: T[], size: number): T[][] => {
+  const result: T[][] = [];
+  const backtrack = (start: number, combo: T[]) => {
+    if (combo.length === size) {
+      result.push([...combo]);
+      return;
+    }
+    for (let i = start; i < arr.length; i += 1) {
+      combo.push(arr[i]);
+      backtrack(i + 1, combo);
+      combo.pop();
+    }
+  };
+  backtrack(0, []);
+  return result;
+};
+
+const detectNakedSet = (board: CellState[][], size: number, type: HintType, title: string): Hint | null => {
+  const checkUnit = (coords: CellPointer[], label: string): Hint | null => {
+    const candidates = coords
+      .map(({ row, col }) => ({ row, col, cell: board[row][col] }))
+      .filter(({ cell }) => isEditableCell(cell) && cell.candidates.length > 1 && cell.candidates.length <= size);
+    if (candidates.length < size) {
+      return null;
+    }
+    for (const combo of combinations(candidates, size)) {
+      const union = new Set<number>();
+      combo.forEach(({ cell }) => cell.candidates.forEach((digit) => union.add(digit)));
+      if (union.size !== size) {
+        continue;
+      }
+      const comboKeys = new Set(combo.map(({ row, col }) => createCellKey(row, col)));
+      const eliminationExists = coords.some(({ row, col }) => {
+        const key = createCellKey(row, col);
+        if (comboKeys.has(key)) {
+          return false;
+        }
+        const cell = board[row][col];
+        return isEditableCell(cell) && cell.candidates.some((digit) => union.has(digit));
+      });
+      if (!eliminationExists) {
+        continue;
+      }
+      return {
+        type,
+        title: `${title} (${label})`,
+        message: `${title} with digits ${Array.from(union).join(', ')} in ${label}. Remove those digits from other cells in the same ${label.includes('row') ? 'row' : label.includes('column') ? 'column' : 'box'}.`,
+        cells: combo.map(({ row, col }) => ({ row, col })),
+      };
+    }
+    return null;
+  };
+
+  for (let idx = 0; idx < 9; idx += 1) {
+    const rowHint = checkUnit(unitCoords.rows[idx], `row ${idx + 1}`);
+    if (rowHint) {
+      return rowHint;
+    }
+    const colHint = checkUnit(unitCoords.cols[idx], `column ${idx + 1}`);
+    if (colHint) {
+      return colHint;
+    }
+    const boxHint = checkUnit(unitCoords.boxes[idx], `box ${idx + 1}`);
+    if (boxHint) {
+      return boxHint;
+    }
+  }
+  return null;
+};
+
+const detectHiddenSet = (board: CellState[][], size: number, type: HintType, title: string): Hint | null => {
+  const checkUnit = (coords: CellPointer[], label: string): Hint | null => {
+    const digitMap = new Map<number, CellPointer[]>();
+    DIGITS.forEach((digit) => digitMap.set(digit, []));
+    coords.forEach(({ row, col }) => {
+      const cell = board[row][col];
+      if (!isEditableCell(cell)) {
+        return;
+      }
+      cell.candidates.forEach((digit) => {
+        digitMap.get(digit)?.push({ row, col });
+      });
+    });
+    const digitEntries = Array.from(digitMap.entries()).filter(([, cells]) => cells.length > 0);
+    const digitCombos = combinations(digitEntries, size);
+    for (const combo of digitCombos) {
+      const unionCells = new Map<string, CellPointer>();
+      let valid = true;
+      combo.forEach(([, cells]) => {
+        cells.forEach((cell) => unionCells.set(createCellKey(cell.row, cell.col), cell));
+      });
+      if (unionCells.size !== size) {
+        continue;
+      }
+      combo.forEach(([, cells]) => {
+        cells.forEach((cell) => {
+          if (!unionCells.has(createCellKey(cell.row, cell.col))) {
+            valid = false;
+          }
+        });
+      });
+      if (!valid) {
+        continue;
+      }
+      const digits = combo.map(([digit]) => digit);
+      const actionable = Array.from(unionCells.values()).some(({ row, col }) => {
+        const cell = board[row][col];
+        return cell.candidates.some((digit) => !digits.includes(digit));
+      });
+      if (!actionable) {
+        continue;
+      }
+      return {
+        type,
+        title: `${title} (${label})`,
+        message: `${title} with digits ${digits.join(', ')} in ${label}. Remove other digits from the highlighted cells.`,
+        cells: Array.from(unionCells.values()),
+      };
+    }
+    return null;
+  };
+
+  for (let idx = 0; idx < 9; idx += 1) {
+    const rowHint = checkUnit(unitCoords.rows[idx], `row ${idx + 1}`);
+    if (rowHint) {
+      return rowHint;
+    }
+    const colHint = checkUnit(unitCoords.cols[idx], `column ${idx + 1}`);
+    if (colHint) {
+      return colHint;
+    }
+    const boxHint = checkUnit(unitCoords.boxes[idx], `box ${idx + 1}`);
+    if (boxHint) {
+      return boxHint;
+    }
+  }
+  return null;
+};
+
+const detectXWing: HintDetector = (board) => {
+  const digitMapRows = new Map<number, Map<number, number[]>>();
+  const digitMapCols = new Map<number, Map<number, number[]>>();
+  DIGITS.forEach((digit) => {
+    digitMapRows.set(digit, new Map());
+    digitMapCols.set(digit, new Map());
+  });
+
+  for (const digit of DIGITS) {
+    for (let row = 0; row < 9; row += 1) {
+      const cols: number[] = [];
+      for (let col = 0; col < 9; col += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          cols.push(col);
+        }
+      }
+      if (cols.length === 2) {
+        digitMapRows.get(digit)?.set(row, cols);
+      }
+    }
+    for (let col = 0; col < 9; col += 1) {
+      const rows: number[] = [];
+      for (let row = 0; row < 9; row += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          rows.push(row);
+        }
+      }
+      if (rows.length === 2) {
+        digitMapCols.get(digit)?.set(col, rows);
+      }
+    }
+  }
+
+  const checkRows = (): Hint | null => {
+    for (const digit of DIGITS) {
+      const rowMap = digitMapRows.get(digit)!;
+      const rowIndices = Array.from(rowMap.keys());
+      for (const pair of combinations(rowIndices, 2)) {
+        const [rowA, rowB] = pair;
+        const colsA = rowMap.get(rowA)!;
+        const colsB = rowMap.get(rowB)!;
+        if (colsA[0] === colsB[0] && colsA[1] === colsB[1]) {
+          const eliminationTargets: CellPointer[] = [];
+          for (const col of colsA) {
+            for (let row = 0; row < 9; row += 1) {
+              if (row === rowA || row === rowB) {
+                continue;
+              }
+              const cell = board[row][col];
+              if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+                eliminationTargets.push({ row, col });
+              }
+            }
+          }
+          if (eliminationTargets.length > 0) {
+            return {
+              type: 'x-wing',
+              title: 'X-Wing (Row)',
+              message: `Digit ${digit} forms an X-Wing on rows ${rowA + 1} & ${rowB + 1}. Remove ${digit} from other cells in columns ${colsA
+                .map((c) => c + 1)
+                .join(' & ')}.`,
+              cells: [
+                { row: rowA, col: colsA[0] },
+                { row: rowA, col: colsA[1] },
+                { row: rowB, col: colsA[0] },
+                { row: rowB, col: colsA[1] },
+              ],
+            };
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const checkCols = (): Hint | null => {
+    for (const digit of DIGITS) {
+      const colMap = digitMapCols.get(digit)!;
+      const colIndices = Array.from(colMap.keys());
+      for (const pair of combinations(colIndices, 2)) {
+        const [colA, colB] = pair;
+        const rowsA = colMap.get(colA)!;
+        const rowsB = colMap.get(colB)!;
+        if (rowsA[0] === rowsB[0] && rowsA[1] === rowsB[1]) {
+          const eliminationTargets: CellPointer[] = [];
+          for (const row of rowsA) {
+            for (let col = 0; col < 9; col += 1) {
+              if (col === colA || col === colB) {
+                continue;
+              }
+              const cell = board[row][col];
+              if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+                eliminationTargets.push({ row, col });
+              }
+            }
+          }
+          if (eliminationTargets.length > 0) {
+            return {
+              type: 'x-wing',
+              title: 'X-Wing (Column)',
+              message: `Digit ${digit} forms an X-Wing on columns ${colA + 1} & ${colB + 1}. Remove ${digit} from other cells in rows ${rowsA
+                .map((r) => r + 1)
+                .join(' & ')}.`,
+              cells: [
+                { row: rowsA[0], col: colA },
+                { row: rowsA[1], col: colA },
+                { row: rowsA[0], col: colB },
+                { row: rowsA[1], col: colB },
+              ],
+            };
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  return checkRows() ?? checkCols();
+};

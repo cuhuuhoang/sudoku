@@ -38,6 +38,7 @@ Notes:
 - **Visualization**: In-board candidates, larger digits, matching tile styles, and responsive layout for mobile/desktop
 - **Night mode**: Toggle at the bottom of both the level selector and game screen; theme persists via local storage
 - **Deployment ready**: Vite preview also binds to 7203
+- **Hints**: Built-in hint system highlights solvable patterns (singles, locked candidates, x-wing, etc.) and multi-selects the relevant tiles.
 - **Installable**: Includes a PWA manifest/service worker so Chrome can install it as an app on desktop/mobile.
 
 ## Notes

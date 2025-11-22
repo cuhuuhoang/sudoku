@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null,
       includeAssets: ['img.png'],
       srcDir: 'src',
       filename: 'sw.ts',

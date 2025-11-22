@@ -409,6 +409,7 @@ function App() {
   const commitBoardChange = (mutator: (draft: CellState[][]) => void, fallbackMessage?: FallbackMessage) => {
     let promotions = 0;
     let resolvedFallback: string | undefined;
+    let processedBoard: CellState[][] | null = null;
     setBoard((prev) => {
       const next = cloneBoard(prev);
       mutator(next);
@@ -416,8 +417,18 @@ function App() {
       promotions = promoted;
       resolvedFallback =
         typeof fallbackMessage === 'function' ? fallbackMessage() : fallbackMessage ?? undefined;
+      processedBoard = processed;
       return processed;
     });
+    if (processedBoard) {
+      persistGame({
+        board: processedBoard,
+        initialBoard,
+        solution,
+        level,
+      });
+      setHasSavedGame(true);
+    }
     if (promotions > 0) {
       setStatus(`Auto promoted ${promotions} single${promotions > 1 ? 's' : ''}.`);
     } else if (resolvedFallback) {
@@ -498,21 +509,6 @@ function App() {
       return;
     }
     startGame(level);
-  };
-
-  const handleSaveBoard = () => {
-    if (!board.length) {
-      return;
-    }
-
-    persistGame({
-      board,
-      initialBoard,
-      solution,
-      level,
-    });
-    setHasSavedGame(true);
-    setStatus('Progress saved locally.');
   };
 
   const handleSetValue = (value: number | null) => {
@@ -823,7 +819,6 @@ function App() {
           <div className="controls">
             <button onClick={handleResetBoard}>Reset</button>
             <button onClick={handleNewSameLevel}>New {level}</button>
-            <button onClick={handleSaveBoard}>Save</button>
             <button onClick={handleUndo} disabled={!canUndo}>
               Undo
             </button>

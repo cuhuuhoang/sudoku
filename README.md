@@ -33,8 +33,8 @@ Notes:
 ## Features
 - **Level picker**: Easy/Medium/Hard generator with unique solutions
 - **Board interactions**: Tap-only value entry, candidate toggling, auto-cleanup/promote, undo history (3 steps)
-- **Persistence**: Save/Load current puzzle, auto-resume on refresh
-- **Controls**: Reset, New puzzle at current level, Save, Undo, and board status messaging
+- **Persistence**: Auto-saves after every edit and can reload the latest puzzle on start
+- **Controls**: Reset, New puzzle at current level, Undo, and board status messaging
 - **Visualization**: In-board candidates, larger digits, matching tile styles, and responsive layout for mobile/desktop
 - **Night mode**: Toggle at the bottom of both the level selector and game screen; theme persists via local storage
 - **Deployment ready**: Vite preview also binds to 7203

@@ -35,6 +35,8 @@ interface Hint {
   title: string;
   message: string;
   cells: CellPointer[];
+  digit?: number;
+  eliminationStartIndex?: number;
 }
 
 interface CellState {
@@ -1024,6 +1026,68 @@ function App() {
     setStatus(hint.message);
   };
 
+  const handleApplyHint = () => {
+    if (!activeHint) {
+      setStatus('No hint selected.');
+      return;
+    }
+    if (activeHint.digit === undefined) {
+      setStatus('Apply is unavailable for this hint type.');
+      return;
+    }
+    const targetDigit = activeHint.digit;
+    if (activeHint.cells.length === 0) {
+      setStatus('No cells to apply.');
+      return;
+    }
+
+    const firstCell = activeHint.cells[0];
+    const first = board[firstCell.row]?.[firstCell.col];
+    const isSinglePlacement =
+      ['naked-single', 'hidden-single-row', 'hidden-single-column', 'hidden-single-box'].includes(activeHint.type) ||
+      activeHint.cells.length === 1 ||
+      (first && isEditableCell(first) && first.candidates.length === 1);
+
+    if (isSinglePlacement && first && isEditableCell(first)) {
+      recordSnapshot();
+      commitBoardChange(
+        (draft) => {
+          const cell = draft[firstCell.row][firstCell.col];
+          cell.value = targetDigit;
+          cell.candidates = [];
+        },
+        `Placed ${targetDigit} at ${createCellLabel(firstCell.row, firstCell.col)}.`,
+      );
+      setActiveHint(null);
+      return;
+    }
+
+    const start = activeHint.eliminationStartIndex ?? (activeHint.cells.length > 1 ? 1 : 0);
+    const eliminationCells = activeHint.cells.slice(start);
+    if (eliminationCells.length === 0) {
+      setStatus('No elimination targets in this hint.');
+      return;
+    }
+
+    recordSnapshot();
+    let removed = 0;
+    commitBoardChange(
+      (draft) => {
+        eliminationCells.forEach(({ row, col }) => {
+          const cell = draft[row]?.[col];
+          if (cell && isEditableCell(cell) && cell.candidates.includes(targetDigit)) {
+            cell.candidates = cell.candidates.filter((d) => d !== targetDigit);
+            removed += 1;
+          }
+        });
+      },
+      () => (removed ? `Removed ${targetDigit} from ${removed} cell${removed > 1 ? 's' : ''}.` : 'No candidates to remove.'),
+    );
+    if (!removed) {
+      setStatus('No candidates to remove.');
+    }
+  };
+
   const solved = useMemo(() => {
     if (!solution.length || !board.length) {
       return false;
@@ -1252,6 +1316,9 @@ function App() {
                 <button className="ghost hint-button" onClick={handleHint} disabled={!board.length}>
                   Show Hint
                 </button>
+                <button className="ghost hint-button" onClick={handleApplyHint} disabled={!activeHint}>
+                  Apply Hint
+                </button>
                 <p className="hint-message">
                   {activeHint ? (
                     <>
@@ -1276,6 +1343,9 @@ function App() {
             <div className="hint-panel desktop-only">
               <button className="ghost hint-button" onClick={handleHint} disabled={!board.length}>
                 Show Hint
+              </button>
+              <button className="ghost hint-button" onClick={handleApplyHint} disabled={!activeHint}>
+                Apply Hint
               </button>
               <p className="hint-message">
                 {activeHint ? (
@@ -1467,6 +1537,7 @@ const detectNakedSingle: HintDetector = (board) => {
           type: 'naked-single',
           title: 'Single Candidate',
           message: `${createCellLabel(row, col)} only allows ${cell.candidates[0]}.`,
+          digit: cell.candidates[0],
           cells: [{ row, col }],
         };
       }
@@ -1492,6 +1563,7 @@ const detectHiddenSingleRow: HintDetector = (board) => {
           title: 'Hidden Single (Row)',
           message: `Digit ${digit} can only go in ${createCellLabel(cell.row, cell.col)} of row ${row + 1}.`,
           cells,
+          digit,
         };
       }
     }
@@ -1516,6 +1588,7 @@ const detectHiddenSingleColumn: HintDetector = (board) => {
           title: 'Hidden Single (Column)',
           message: `Digit ${digit} can only go in ${createCellLabel(cell.row, cell.col)} of column ${col + 1}.`,
           cells,
+          digit,
         };
       }
     }
@@ -1543,6 +1616,7 @@ const detectHiddenSingleBox: HintDetector = (board) => {
             title: 'Hidden Single (Box)',
             message: `Digit ${digit} fits only in ${createCellLabel(cell.row, cell.col)} of its box.`,
             cells,
+            digit,
           };
         }
       }
@@ -1592,6 +1666,8 @@ const detectPeerElimination: HintDetector = (board) => {
           title: 'Candidate Elimination',
           message: `Value ${cell.value} at ${createCellLabel(row, col)} lets you remove ${cell.value} from highlighted peers.`,
           cells: [{ row, col }, ...offenders],
+          digit: cell.value ?? undefined,
+          eliminationStartIndex: 1,
         };
       }
     }
@@ -1878,12 +1954,13 @@ const detectHiddenSet = (board: CellState[][], size: number, type: HintType, tit
       if (!actionable) {
         continue;
       }
-      return {
-        type,
-        title: `${title} (${label})`,
-        message: `${title} with digits ${digits.join(', ')} in ${label}. Remove other digits from the highlighted cells.`,
-        cells: Array.from(unionCells.values()),
-      };
+            return {
+              type,
+              title: `${title} (${label})`,
+              message: `${title} with digits ${digits.join(', ')} in ${label}. Remove other digits from the highlighted cells.`,
+              cells: Array.from(unionCells.values()),
+              digit: undefined,
+            };
     }
     return null;
   };
@@ -1973,7 +2050,10 @@ const detectXWing: HintDetector = (board) => {
                 { row: rowA, col: colsA[1] },
                 { row: rowB, col: colsA[0] },
                 { row: rowB, col: colsA[1] },
+                ...eliminationTargets,
               ],
+              digit,
+              eliminationStartIndex: 4,
             };
           }
         }
@@ -2015,7 +2095,10 @@ const detectXWing: HintDetector = (board) => {
                 { row: rowsA[1], col: colA },
                 { row: rowsA[0], col: colB },
                 { row: rowsA[1], col: colB },
+                ...eliminationTargets,
               ],
+              digit,
+              eliminationStartIndex: 4,
             };
           }
         }
@@ -2093,6 +2176,8 @@ const detectFish = (board: CellState[][], size: 3 | 4, type: HintType, title: st
           title: `${title} (${orientation === 'row' ? 'rows' : 'columns'})`,
           message: `${title} on digit ${digit}. Remove ${digit} from highlighted peer cells.`,
           cells: [...baseCells, ...eliminations],
+          digit,
+          eliminationStartIndex: baseCells.length,
         };
       }
     }
@@ -2163,6 +2248,7 @@ const detectXYWing: HintDetector = (board) => {
           const pivotLabel = createCellLabel(pivot.row, pivot.col);
           const wingALabel = createCellLabel(a.row, a.col);
           const wingBLabel = createCellLabel(b.row, b.col);
+          const eliminationStartIndex = 3;
           return {
             type: 'xy-wing',
             title: 'XY-Wing',
@@ -2173,6 +2259,8 @@ const detectXYWing: HintDetector = (board) => {
               { row: b.row, col: b.col },
               ...eliminations,
             ],
+            digit: z,
+            eliminationStartIndex,
           };
         }
       }
@@ -2239,6 +2327,8 @@ const detectXYZWing: HintDetector = (board) => {
             { row: w2.row, col: w2.col },
             ...eliminations,
           ],
+          digit: targetDigit,
+          eliminationStartIndex: 3,
         };
       }
     }
@@ -2326,6 +2416,8 @@ const detectWWing: HintDetector = (board) => {
             { row: b.row, col: b.col },
             ...eliminations,
           ],
+          digit: y,
+          eliminationStartIndex: 2,
         };
       }
     }
@@ -2401,18 +2493,20 @@ const detectRemotePair: HintDetector = (board) => {
           eliminations.push({ row, col });
         }
       });
-      if (eliminations.length > 0) {
-        return {
-          type: 'remote-pair',
-          title: 'Remote Pair',
-          message: `Odd-length chain of pairs ${a.candidates.join('/')} forces eliminations in overlapping peers.`,
-          cells: [
-            { row: a.row, col: a.col },
-            { row: b.row, col: b.col },
-            ...eliminations,
-          ],
-        };
-      }
+        if (eliminations.length > 0) {
+          return {
+            type: 'remote-pair',
+            title: 'Remote Pair',
+            message: `Odd-length chain of pairs ${a.candidates.join('/')} forces eliminations in overlapping peers.`,
+            cells: [
+              { row: a.row, col: a.col },
+              { row: b.row, col: b.col },
+              ...eliminations,
+            ],
+          digit: undefined,
+          eliminationStartIndex: 2,
+          };
+        }
     }
   }
   return null;
@@ -2509,6 +2603,8 @@ const detectSimpleColoring: HintDetector = (board) => {
               { row, col },
               ...coloredCells,
             ],
+            digit,
+            eliminationStartIndex: 0,
           };
         }
       }
@@ -2609,17 +2705,19 @@ const detectMultiColoring: HintDetector = (board) => {
             eliminations.push(parseCellKey(key));
           }
         });
-        if (eliminations.length > 0) {
-          return {
-            type: 'multi-coloring',
-            title: 'Multi-coloring',
-            message: `Digit ${digit} has conflicting same-color groups; opposite colors are forced and can be eliminated.`,
-            cells: eliminations,
-          };
+          if (eliminations.length > 0) {
+            return {
+              type: 'multi-coloring',
+              title: 'Multi-coloring',
+              message: `Digit ${digit} has conflicting same-color groups; opposite colors are forced and can be eliminated.`,
+              cells: eliminations,
+              digit,
+              eliminationStartIndex: 0,
+            };
+          }
         }
       }
     }
-  }
   return null;
 };
 
@@ -2682,6 +2780,7 @@ const detectForcingChains = (board: CellState[][], maxDepth: number): Hint | nul
         title: 'Forcing Chain',
         message: `Assuming either ${a} or ${b} in ${createCellLabel(pivot.row, pivot.col)} forces other cells. Apply the shared forced placements.`,
         cells: [{ row: pivot.row, col: pivot.col }, ...forcedValues],
+        digit: undefined,
       };
     }
 
@@ -2698,6 +2797,8 @@ const detectForcingChains = (board: CellState[][], maxDepth: number): Hint | nul
         title: 'Forcing Chain',
         message: `Both assumptions for ${createCellLabel(pivot.row, pivot.col)} eliminate the same candidates elsewhere.`,
         cells: [{ row: pivot.row, col: pivot.col }, ...eliminations],
+        digit: undefined,
+        eliminationStartIndex: 1,
       };
     }
   }

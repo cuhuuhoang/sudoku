@@ -107,4 +107,32 @@ describe('applyHintToBoard', () => {
     expect(result.changed).toBe(true);
     expect(board[1][1].candidates).not.toContain(6);
   });
+
+  it('applies locked claiming elimination for column-based case', () => {
+    const board = makeBoard();
+    // Simulate a column-claiming hint manually
+    const hint = {
+      type: 'locked-claiming' as const,
+      title: 'Locked Candidates (Claiming)',
+      message: '',
+      digit: 6,
+      cells: [
+        { row: 3, col: 2 },
+        { row: 4, col: 2 },
+        { row: 5, col: 2 },
+        { row: 3, col: 0 },
+        { row: 4, col: 0 },
+        { row: 5, col: 1 },
+      ],
+      eliminationStartIndex: 3,
+    };
+    board[3][0].candidates = [6];
+    board[4][0].candidates = [6];
+    board[5][1].candidates = [6];
+    const result = applyHintToBoard(board, hint);
+    expect(result.changed).toBe(true);
+    expect(board[3][0].candidates).not.toContain(6);
+    expect(board[4][0].candidates).not.toContain(6);
+    expect(board[5][1].candidates).not.toContain(6);
+  });
 });

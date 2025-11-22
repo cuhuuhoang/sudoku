@@ -1358,7 +1358,7 @@ function App() {
                   value={exportText}
                   readOnly
                   placeholder="Click Copy state to generate a shareable string."
-                  rows={5}
+                  rows={8}
                 />
               </div>
               <div className="modal-section">

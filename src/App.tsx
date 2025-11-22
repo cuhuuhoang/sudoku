@@ -1936,10 +1936,13 @@ const detectXYZWing: HintDetector = (board) => {
         }
       });
       if (eliminations.length > 0) {
+        const pivotLabel = createCellLabel(pivot.row, pivot.col);
+        const wingALabel = createCellLabel(w1.row, w1.col);
+        const wingBLabel = createCellLabel(w2.row, w2.col);
         return {
           type: 'xyz-wing',
           title: 'XYZ-Wing',
-          message: `XYZ-Wing pivots on ${targetDigit}. Remove ${targetDigit} from cells seeing all three.`,
+          message: `Pivot ${pivotLabel} (${pivot.candidates.join('/')}) with wings ${wingALabel} (${w1.candidates.join('/')}) and ${wingBLabel} (${w2.candidates.join('/')}): remove ${targetDigit} from cells that see all three.`,
           cells: [
             { row: pivot.row, col: pivot.col },
             { row: w1.row, col: w1.col },

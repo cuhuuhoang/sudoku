@@ -48,8 +48,14 @@ interface SavedGame {
   solution: number[][];
 }
 
+interface AutomationSettings {
+  cleanup: boolean;
+  promote: boolean;
+}
+
 const STORAGE_KEY = 'sudoku-current-game-v1';
 const THEME_KEY = 'sudoku-theme';
+const AUTO_SETTINGS_KEY = 'sudoku-auto-settings-v1';
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const createCellKey = (row: number, col: number) => `${row}-${col}`;
 const parseCellKey = (key: string): CellPointer => {
@@ -105,6 +111,27 @@ const readSavedGame = (): SavedGame | null => {
   } catch (error) {
     console.warn('Unable to read saved game', error);
     return null;
+  }
+};
+
+const readAutomationSettings = (): AutomationSettings => {
+  if (!isBrowser) {
+    return { cleanup: true, promote: true };
+  }
+
+  try {
+    const cached = localStorage.getItem(AUTO_SETTINGS_KEY);
+    if (!cached) {
+      return { cleanup: true, promote: true };
+    }
+    const parsed = JSON.parse(cached) as Partial<AutomationSettings>;
+    return {
+      cleanup: parsed.cleanup !== undefined ? parsed.cleanup : true,
+      promote: parsed.promote !== undefined ? parsed.promote : true,
+    };
+  } catch (error) {
+    console.warn('Unable to read automation settings', error);
+    return { cleanup: true, promote: true };
   }
 };
 
@@ -191,16 +218,24 @@ const promoteSingles = (source: CellState[][]): { board: CellState[][]; promoted
   return { board, promoted };
 };
 
-const runAutomation = (source: CellState[][]): { board: CellState[][]; promoted: number } => {
-  let working = autoCleanCandidates(source);
+const runAutomation = (
+  source: CellState[][],
+  options: { cleanup?: boolean; promote?: boolean } = {},
+): { board: CellState[][]; promoted: number } => {
+  const shouldCleanup = options.cleanup ?? true;
+  const shouldPromote = options.promote ?? true;
+  let working = shouldCleanup ? autoCleanCandidates(source) : cloneBoard(source);
   let totalPromoted = 0;
+  if (!shouldPromote) {
+    return { board: working, promoted: totalPromoted };
+  }
   while (true) {
     const { board: promotedBoard, promoted } = promoteSingles(working);
     if (promoted === 0) {
-      return { board: working, promoted: totalPromoted };
+      return { board: shouldCleanup ? working : promotedBoard, promoted: totalPromoted };
     }
     totalPromoted += promoted;
-    working = autoCleanCandidates(promotedBoard);
+    working = shouldCleanup ? autoCleanCandidates(promotedBoard) : promotedBoard;
   }
 };
 
@@ -225,6 +260,7 @@ function App() {
   const dragSelectedKeys = useRef<Set<string>>(new Set<string>());
   const dragMovedRef = useRef(false);
   const [activeHint, setActiveHint] = useState<Hint | null>(null);
+  const [automationSettings, setAutomationSettings] = useState<AutomationSettings>(() => readAutomationSettings());
 
   const resetSelectionState = () => {
     setSelectedCell(null);
@@ -240,8 +276,8 @@ function App() {
     const saved = readSavedGame();
     setHasSavedGame(Boolean(saved));
     if (saved) {
-      const { board: processedBoard, promoted } = runAutomation(saved.board);
-      const { board: processedInitial } = runAutomation(saved.initialBoard);
+      const { board: processedBoard, promoted } = runAutomation(saved.board, automationSettings);
+      const { board: processedInitial } = runAutomation(saved.initialBoard, automationSettings);
       setBoard(processedBoard);
       setInitialBoard(processedInitial);
       setSolution(saved.solution);
@@ -275,6 +311,13 @@ function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!isBrowser) {
+      return;
+    }
+    localStorage.setItem(AUTO_SETTINGS_KEY, JSON.stringify(automationSettings));
+  }, [automationSettings]);
 
   useEffect(() => {
     if (!board.length || !solution.length) {
@@ -410,7 +453,7 @@ function App() {
     setBoard((prev) => {
       const next = cloneBoard(prev);
       mutator(next);
-      const { board: processed, promoted } = runAutomation(next);
+      const { board: processed, promoted } = runAutomation(next, automationSettings);
       promotions = promoted;
       resolvedFallback =
         typeof fallbackMessage === 'function' ? fallbackMessage() : fallbackMessage ?? undefined;
@@ -444,7 +487,7 @@ function App() {
     try {
       const { puzzle, solution } = generateSudoku(difficulty);
       const seededBoard = createBoardFromPuzzle(puzzle);
-      const { board: processedBoard, promoted } = runAutomation(seededBoard);
+      const { board: processedBoard, promoted } = runAutomation(seededBoard, automationSettings);
       setBoard(processedBoard);
       setInitialBoard(cloneBoard(processedBoard));
       setSolution(solution);
@@ -467,8 +510,8 @@ function App() {
       return;
     }
 
-    const { board: processedBoard, promoted } = runAutomation(saved.board);
-    const { board: processedInitial } = runAutomation(saved.initialBoard);
+    const { board: processedBoard, promoted } = runAutomation(saved.board, automationSettings);
+    const { board: processedInitial } = runAutomation(saved.initialBoard, automationSettings);
     setBoard(processedBoard);
     setInitialBoard(processedInitial);
     setSolution(saved.solution);
@@ -493,7 +536,7 @@ function App() {
       return;
     }
 
-    const { board: refreshedBoard, promoted } = runAutomation(cloneBoard(initialBoard));
+    const { board: refreshedBoard, promoted } = runAutomation(cloneBoard(initialBoard), automationSettings);
     setBoard(refreshedBoard);
     resetSelectionState();
     setHistory([]);
@@ -866,7 +909,34 @@ function App() {
                 )}
               </p>
             </div>
-            <div className="control-note muted">Candidates clean up & singles promote automatically.</div>
+            <div className="control-toggles">
+              <label className="toggle-option">
+                <input
+                  type="checkbox"
+                  checked={automationSettings.cleanup}
+                  onChange={(event) =>
+                    setAutomationSettings((prev) => ({ ...prev, cleanup: event.target.checked }))
+                  }
+                />
+                <div className="toggle-copy">
+                  <span className="toggle-title">Candidates cleanup</span>
+                  <span className="muted">Remove peer candidates whenever a value is set.</span>
+                </div>
+              </label>
+              <label className="toggle-option">
+                <input
+                  type="checkbox"
+                  checked={automationSettings.promote}
+                  onChange={(event) =>
+                    setAutomationSettings((prev) => ({ ...prev, promote: event.target.checked }))
+                  }
+                />
+                <div className="toggle-copy">
+                  <span className="toggle-title">Singles promote</span>
+                  <span className="muted">Auto-fill cells that only allow one candidate.</span>
+                </div>
+              </label>
+            </div>
           </div>
           </div>
 

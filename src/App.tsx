@@ -1113,7 +1113,23 @@ function App() {
 
 export default App;
 
-export { runAutomation };
+export {
+  runAutomation,
+  findHint,
+  detectNakedSingle,
+  detectHiddenSingleRow,
+  detectHiddenSingleColumn,
+  detectHiddenSingleBox,
+  detectPeerElimination,
+  detectLockedCandidatesPointing,
+  detectLockedCandidatesClaiming,
+  detectNakedSet,
+  detectHiddenSet,
+  detectXWing,
+  detectFish,
+  detectXYWing,
+  detectXYZWing,
+};
 export type { CellState, CellPointer, AutomationSettings };
 
 const isEditableCell = (cell: CellState) => !cell.given && cell.value === null;
@@ -1829,11 +1845,16 @@ const detectXYWing: HintDetector = (board) => {
         if (a.row === b.row && a.col === b.col) {
           continue;
         }
-        const zCandidates = [...a.candidates, ...b.candidates].filter((digit) => digit !== x && digit !== y);
-        const z = zCandidates.length === 1 ? zCandidates[0] : null;
-        if (!z) {
+        const zSet = new Set<number>();
+        [...a.candidates, ...b.candidates].forEach((digit) => {
+          if (digit !== x && digit !== y) {
+            zSet.add(digit);
+          }
+        });
+        if (zSet.size !== 1) {
           continue;
         }
+        const z = Array.from(zSet)[0];
         const intersection = new Set<string>();
         a.peers.forEach((peer) => {
           if (b.peers.has(peer)) {

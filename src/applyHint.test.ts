@@ -5,6 +5,7 @@ import {
   detectForcingChains,
   detectLockedCandidatesClaiming,
   detectXYWing,
+  detectHiddenSet,
   detectNakedSet,
   findHint,
   type CellState,
@@ -108,6 +109,20 @@ describe('applyHintToBoard', () => {
     expect(result.changed).toBe(true);
     expect(board[1][0].candidates).not.toContain(6);
     expect(board[2][1].candidates).not.toContain(6);
+  });
+
+  it('applies hidden triple elimination', () => {
+    const board = makeBoard();
+    board[0][0].candidates = [1, 3, 5, 7];
+    board[0][1].candidates = [1, 3, 5, 8];
+    board[0][2].candidates = [1, 3, 5];
+    const hint = detectHiddenSet(board, 3, 'hidden-triple', 'Hidden Triple');
+    expect(hint?.type).toBe('hidden-triple');
+    if (!hint) return;
+    const result = applyHintToBoard(board, hint);
+    expect(result.changed).toBe(true);
+    expect(board[0][0].candidates).not.toContain(7);
+    expect(board[0][1].candidates).not.toContain(8);
   });
 
   it('applies naked set eliminations', () => {

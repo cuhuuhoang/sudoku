@@ -130,6 +130,17 @@ describe('hint detectors', () => {
     expect(detectHiddenSet(quadBoard, 4, 'hidden-quad', 'Hidden Quad')?.type).toBe('hidden-quad');
   });
 
+  it('detects hidden triple and provides eliminations', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 3, 5, 7]);
+    setCandidates(board, 0, 1, [1, 3, 5, 8]);
+    setCandidates(board, 0, 2, [1, 3, 5]);
+    const hint = detectHiddenSet(board, 3, 'hidden-triple', 'Hidden Triple');
+    expect(hint?.type).toBe('hidden-triple');
+    expect(hint?.eliminationDigits).toContain(7);
+    expect(hint?.eliminationDigits).toContain(8);
+  });
+
   it('detects X-Wing and fish (swordfish, jellyfish)', () => {
     const xwingBoard = makeBoard();
     [0, 1].forEach((row) => {

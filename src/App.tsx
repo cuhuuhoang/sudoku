@@ -1920,13 +1920,30 @@ const detectHiddenSet = (board: CellState[][], size: number, type: HintType, tit
       if (!actionable) {
         continue;
       }
-            return {
-              type,
-              title: `${title} (${label})`,
-              message: `${title} with digits ${digits.join(', ')} in ${label}. Remove other digits from the highlighted cells.`,
-              cells: Array.from(unionCells.values()),
-              digit: undefined,
-            };
+      const eliminations: CellPointer[] = [];
+      const removalDigits = new Set<number>();
+      Array.from(unionCells.values()).forEach(({ row, col }) => {
+        const cell = board[row][col];
+        cell.candidates.forEach((digit) => {
+          if (!digits.includes(digit)) {
+            removalDigits.add(digit);
+          }
+        });
+        eliminations.push({ row, col });
+      });
+      if (removalDigits.size === 0) {
+        continue;
+      }
+      return {
+        type,
+        title: `${title} (${label})`,
+        message: `${title} with digits ${digits.join(', ')} in ${label}. Remove other digits from the highlighted cells.`,
+        cells: Array.from(unionCells.values()),
+        digit: undefined,
+        eliminations,
+        eliminationDigits: Array.from(removalDigits),
+        eliminationStartIndex: 0,
+      };
     }
     return null;
   };

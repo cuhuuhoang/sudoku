@@ -1349,7 +1349,7 @@ function App() {
                 <div className="modal-row">
                   <span className="modal-title">Export</span>
                   <button onClick={() => handleExportState(true)} disabled={!board.length || !solution.length}>
-                    Copy state
+                    Copy to clipboard
                   </button>
                 </div>
                 <textarea

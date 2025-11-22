@@ -370,13 +370,15 @@ function App() {
     });
   };
 
+  const UNDO_LIMIT = 20;
+
   const recordSnapshot = () => {
     if (!board.length) {
       return;
     }
     setHistory((prev) => {
       const next = [...prev, cloneBoard(board)];
-      if (next.length > 3) {
+      if (next.length > UNDO_LIMIT) {
         next.shift();
       }
       return next;

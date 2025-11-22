@@ -5,6 +5,27 @@ export interface GeneratedSudoku {
   solution: number[][];
 }
 
+type ExternalSudoku = {
+  makepuzzle: () => (number | null)[];
+  solvepuzzle: (puzzle: (number | null)[]) => (number | null)[];
+} | null;
+
+// Attempt to load external generator if installed; fall back to local generator otherwise.
+const loadExternalSudoku = (): ExternalSudoku => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('sudoku') as ExternalSudoku;
+    if (mod && typeof mod.makepuzzle === 'function' && typeof mod.solvepuzzle === 'function') {
+      return mod;
+    }
+  } catch (error) {
+    // ignore; fall back to internal generator
+  }
+  return null;
+};
+
+const externalSudoku = loadExternalSudoku();
+
 export const DIFFICULTY_EMPTY_CELLS: Record<Difficulty, number> = {
   easy: 32,
   medium: 45,
@@ -136,12 +157,24 @@ function carveHoles(source: number[][], emptyCells: number): number[][] {
 }
 
 export function generateSudoku(difficulty: Difficulty): GeneratedSudoku {
-  const solution = createEmptyGrid();
-  fillGrid(solution);
   const holes = DIFFICULTY_EMPTY_CELLS[difficulty];
-  const puzzle = carveHoles(solution, holes);
-  return {
-    puzzle,
-    solution: solution.map((row) => [...row]),
-  };
+
+  if (externalSudoku) {
+    const rawPuzzle = externalSudoku.makepuzzle();
+    const rawSolution = externalSudoku.solvepuzzle(rawPuzzle);
+    const solution = Array.from({ length: 9 }, (_, row) =>
+      Array.from({ length: 9 }, (__ , col) => {
+        const value = rawSolution[row * 9 + col];
+        return value === null ? 0 : (value as number) + 1;
+      }),
+    );
+    const puzzle = carveHoles(solution, holes);
+    return { puzzle, solution };
+  }
+
+  // Fallback to internal generator
+  const solutionGrid = createEmptyGrid();
+  fillGrid(solutionGrid);
+  const puzzle = carveHoles(solutionGrid, holes);
+  return { puzzle, solution: solutionGrid.map((row) => [...row]) };
 }

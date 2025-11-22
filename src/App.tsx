@@ -76,6 +76,7 @@ const difficultyOptions: { id: Difficulty; title: string; subtitle: string }[] =
   { id: 'easy', title: 'Easy', subtitle: 'Gentle starter – plenty of givens.' },
   { id: 'medium', title: 'Medium', subtitle: 'Balanced challenge with steady flow.' },
   { id: 'hard', title: 'Hard', subtitle: 'Sparse clues, focus and patience required.' },
+  { id: 'expert', title: 'Expert', subtitle: 'Minimal clues and advanced logic territory.' },
 ];
 
 const cloneBoard = (board: CellState[][]): CellState[][] =>
@@ -187,8 +188,8 @@ const base64ToBytes = (encoded: string): Uint8Array => {
   }
 };
 
-const LEVEL_CODES: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
-const LEVEL_FROM_CODE: Record<number, Difficulty> = { 1: 'easy', 2: 'medium', 3: 'hard' };
+const LEVEL_CODES: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3, expert: 4 };
+const LEVEL_FROM_CODE: Record<number, Difficulty> = { 1: 'easy', 2: 'medium', 3: 'hard', 4: 'expert' };
 
 const packBoard = (board: CellState[][]): Uint8Array => {
   const bytes = new Uint8Array(board.length * board[0].length * 2);

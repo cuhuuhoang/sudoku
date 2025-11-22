@@ -1,4 +1,4 @@
-export type Difficulty = 'easy' | 'medium' | 'hard';
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 
 export interface GeneratedSudoku {
   puzzle: number[][];

@@ -34,7 +34,7 @@ describe('generateSudoku', () => {
     }
   });
 
-  const difficulties: Difficulty[] = ['easy', 'medium', 'hard'];
+  const difficulties: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
 
   difficulties.forEach((difficulty) => {
     it(`respects givens for ${difficulty} puzzles`, () => {

@@ -23,8 +23,7 @@ type HintType =
   | 'swordfish'
   | 'jellyfish'
   | 'xy-wing'
-  | 'xyz-wing'
-  | 'remote-pair';
+  | 'xyz-wing';
 
 interface Hint {
   type: HintType;
@@ -1432,7 +1431,6 @@ export {
   detectFish,
   detectXYWing,
   detectXYZWing,
-  detectRemotePair,
   encodeGameState,
   decodeGameState,
   applyHintToBoard,
@@ -1458,14 +1456,13 @@ const findHint = (board: CellState[][]): Hint | null => {
     (b) => detectNakedSet(b, 3, 'naked-triple', 'Naked Triple'),
     (b) => detectNakedSet(b, 4, 'naked-quad', 'Naked Quad'),
     (b) => detectHiddenSet(b, 2, 'hidden-pair', 'Hidden Pair'),
-    (b) => detectHiddenSet(b, 3, 'hidden-triple', 'Hidden Triple'),
-    (b) => detectHiddenSet(b, 4, 'hidden-quad', 'Hidden Quad'),
+  (b) => detectHiddenSet(b, 3, 'hidden-triple', 'Hidden Triple'),
+  (b) => detectHiddenSet(b, 4, 'hidden-quad', 'Hidden Quad'),
   detectXWing,
   (b) => detectFish(b, 3, 'swordfish', 'Swordfish'),
   (b) => detectFish(b, 4, 'jellyfish', 'Jellyfish'),
   detectXYWing,
   detectXYZWing,
-  detectRemotePair,
 ];
   for (const detector of detectors) {
     const hint = detector(board);
@@ -2315,93 +2312,6 @@ const detectXYZWing: HintDetector = (board) => {
           eliminationStartIndex: 3,
         };
       }
-    }
-  }
-  return null;
-};
-
-const hasStrongLinkInRow = (board: CellState[][], row: number, digit: number, cols: number[]) => {
-  const positions = [];
-  for (let col = 0; col < 9; col += 1) {
-    const cell = board[row][col];
-    if (isEditableCell(cell) && cell.candidates.includes(digit)) {
-      positions.push(col);
-    }
-  }
-  return positions.length === 2 && cols.every((c) => positions.includes(c));
-};
-
-const hasStrongLinkInCol = (board: CellState[][], col: number, digit: number, rows: number[]) => {
-  const positions = [];
-  for (let row = 0; row < 9; row += 1) {
-    const cell = board[row][col];
-    if (isEditableCell(cell) && cell.candidates.includes(digit)) {
-      positions.push(row);
-    }
-  }
-  return positions.length === 2 && rows.every((r) => positions.includes(r));
-};
-
-
-const detectRemotePair: HintDetector = (board) => {
-  const pairs: { row: number; col: number; candidates: number[]; peers: Set<string> }[] = [];
-  for (let row = 0; row < 9; row += 1) {
-    for (let col = 0; col < 9; col += 1) {
-      const cell = board[row][col];
-      if (isEditableCell(cell) && cell.candidates.length === 2) {
-        pairs.push({
-          row,
-          col,
-          candidates: [...cell.candidates],
-          peers: new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col))),
-        });
-      }
-    }
-  }
-
-  for (let i = 0; i < pairs.length; i += 1) {
-    for (let j = i + 1; j < pairs.length; j += 1) {
-      const a = pairs[i];
-      const b = pairs[j];
-      if (a.candidates[0] !== b.candidates[0] || a.candidates[1] !== b.candidates[1]) {
-        continue;
-      }
-      if (a.peers.has(createCellKey(b.row, b.col))) {
-        continue;
-      }
-      const intersection = new Set<string>();
-      a.peers.forEach((peer) => {
-        if (b.peers.has(peer)) {
-          intersection.add(peer);
-        }
-      });
-      if (intersection.size === 0) {
-        continue;
-      }
-      const eliminations: CellPointer[] = [];
-      intersection.forEach((key) => {
-        const { row, col } = parseCellKey(key);
-        const cell = board[row][col];
-        if (isEditableCell(cell) && cell.candidates.some((digit) => a.candidates.includes(digit))) {
-          eliminations.push({ row, col });
-        }
-      });
-      if (eliminations.length === 0) {
-        continue;
-      }
-      return {
-        type: 'remote-pair',
-        title: 'Remote Pair',
-        message: `Remote pair on ${a.candidates.join('/')} eliminates those digits from shared peers.`,
-        cells: [
-          { row: a.row, col: a.col },
-          { row: b.row, col: b.col },
-        ],
-        digit: undefined,
-        eliminations,
-        eliminationDigits: [...a.candidates],
-        eliminationStartIndex: 2,
-      };
     }
   }
   return null;

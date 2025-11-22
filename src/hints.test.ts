@@ -13,7 +13,6 @@ import {
   detectXWing,
   detectXYWing,
   detectXYZWing,
-  detectRemotePair,
   type CellState,
 } from './App';
 
@@ -184,16 +183,6 @@ describe('hint detectors', () => {
     expect(detectXYZWing(xyzBoard)?.type).toBe('xyz-wing');
   });
 
-  it('detects Remote Pair', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 2]); // endpoint A
-    setCandidates(board, 0, 3, [1, 2]); // chain
-    setCandidates(board, 3, 3, [1, 2]); // chain
-    setCandidates(board, 4, 4, [1, 2]); // endpoint B (odd distance)
-    setCandidates(board, 0, 4, [1]); // sees both endpoints
-    expect(detectRemotePair(board)?.type).toBe('remote-pair');
-  });
-
   // Forcing Chains removed
 
   it('X-Wing edge case: no elimination when peers empty', () => {
@@ -242,25 +231,4 @@ describe('hint detectors', () => {
     expect(detectXYZWing(board)).toBeNull();
   });
 
-  it('Remote Pair edge case: detects shared peers when they exist', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 2]);
-    setCandidates(board, 0, 3, [1, 2]);
-    setCandidates(board, 3, 3, [1, 2]);
-    const hint = detectRemotePair(board);
-    expect(hint?.type).toBe('remote-pair');
-    expect(hint?.eliminations && hint.eliminations.length).toBeGreaterThan(0);
-  });
-
-  it('detects Remote Pair with eliminations', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [4, 7]); // endpoint A
-    setCandidates(board, 0, 4, [4, 7]); // chain
-    setCandidates(board, 4, 4, [4, 7]); // endpoint B (odd distance)
-    setCandidates(board, 2, 4, [4]); // sees both endpoints
-    setCandidates(board, 2, 0, [4]); // sees both endpoints
-    const hint = detectRemotePair(board);
-    expect(hint?.type).toBe('remote-pair');
-    expect(hint?.eliminations && hint.eliminations.length).toBeGreaterThan(0);
-  });
 });

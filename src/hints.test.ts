@@ -15,7 +15,6 @@ import {
   detectXYZWing,
   detectWWing,
   detectRemotePair,
-  detectForcingChains,
   type CellState,
 } from './App';
 
@@ -238,12 +237,5 @@ describe('hint detectors', () => {
     expect(true).toBe(true);
   });
 
-  it('detects Forcing Chains', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 2]); // pivot
-    setCandidates(board, 0, 1, [1, 3]);
-    setCandidates(board, 1, 0, [2, 3]);
-    setCandidates(board, 1, 1, [3]); // forced in both assumptions
-    expect(detectForcingChains(board, 3)?.type).toBe('forcing-chain');
-  });
+  // Forcing Chains removed
 });

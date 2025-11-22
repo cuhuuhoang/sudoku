@@ -25,8 +25,7 @@ type HintType =
   | 'xy-wing'
   | 'xyz-wing'
   | 'w-wing'
-  | 'remote-pair'
-  | 'forcing-chain';
+  | 'remote-pair';
 
 interface Hint {
   type: HintType;
@@ -1436,7 +1435,6 @@ export {
   detectXYZWing,
   detectWWing,
   detectRemotePair,
-  detectForcingChains,
   encodeGameState,
   decodeGameState,
   applyHintToBoard,
@@ -1471,7 +1469,6 @@ const findHint = (board: CellState[][]): Hint | null => {
     detectXYZWing,
     detectWWing,
     detectRemotePair,
-    (b) => detectForcingChains(b, 3),
   ];
   for (const detector of detectors) {
     const hint = detector(board);
@@ -2482,105 +2479,15 @@ const detectRemotePair: HintDetector = (board) => {
   return null;
 };
 
-const detectForcingChains = (board: CellState[][], maxDepth: number): Hint | null => {
-  const editableCells: CellPointer[] = [];
-  for (let row = 0; row < 9; row += 1) {
-    for (let col = 0; col < 9; col += 1) {
-      const cell = board[row][col];
-      if (isEditableCell(cell) && cell.candidates.length === 2) {
-        editableCells.push({ row, col });
-      }
-    }
-  }
-
-  const keyCandidate = (row: number, col: number, digit: number) => `${row}-${col}-${digit}`;
-
-  for (const pivot of editableCells) {
-    const cell = board[pivot.row][pivot.col];
-    const [a, b] = cell.candidates;
-
-    const simulate = (value: number) => {
-      const assumed = cloneBoard(board);
-      assumed[pivot.row][pivot.col].value = value;
-      assumed[pivot.row][pivot.col].candidates = [];
-      const { board: processed } = runAutomation(assumed, { cleanup: true, promote: true, hiddenSingles: true });
-      const removed = new Set<string>();
-      const fixed = new Map<string, number>();
-      for (let row = 0; row < 9; row += 1) {
-        for (let col = 0; col < 9; col += 1) {
-          const before = board[row][col];
-          const after = processed[row][col];
-          if (isEditableCell(before) && after.value !== null) {
-            fixed.set(createCellKey(row, col), after.value);
-          }
-          if (isEditableCell(before)) {
-            before.candidates.forEach((digit) => {
-              if (!after.candidates.includes(digit)) {
-                removed.add(keyCandidate(row, col, digit));
-              }
-            });
-          }
-        }
-      }
-      return { removed, fixed };
-    };
-
-    const first = simulate(a);
-    const second = simulate(b);
-
-    const forcedValues: CellPointer[] = [];
-    first.fixed.forEach((value, key) => {
-      if (second.fixed.get(key) === value) {
-        const { row, col } = parseCellKey(key);
-        forcedValues.push({ row, col });
-      }
-    });
-    if (forcedValues.length > 0) {
-      return {
-        type: 'forcing-chain',
-        title: 'Forcing Chain',
-        message: `Assuming either ${a} or ${b} in ${createCellLabel(pivot.row, pivot.col)} forces other cells. Apply the shared forced placements.`,
-        cells: [{ row: pivot.row, col: pivot.col }, ...forcedValues],
-        digit: undefined,
-      };
-    }
-
-    const eliminations: CellPointer[] = [];
-    let eliminationDigit: number | undefined;
-    first.removed.forEach((entry) => {
-      if (second.removed.has(entry)) {
-        const [rowStr, colStr, digitStr] = entry.split('-');
-        const row = Number(rowStr);
-        const col = Number(colStr);
-        eliminationDigit = eliminationDigit ?? Number(digitStr);
-        eliminations.push({ row, col });
-      }
-    });
-    if (eliminations.length > 0) {
-      return {
-        type: 'forcing-chain',
-        title: 'Forcing Chain',
-        message: `Both assumptions for ${createCellLabel(pivot.row, pivot.col)} eliminate the same candidates elsewhere.`,
-        cells: [{ row: pivot.row, col: pivot.col }, ...eliminations],
-        digit: eliminationDigit,
-        eliminationStartIndex: 1,
-      };
-    }
-  }
-  return null;
-};
-
 const applyHintToBoard = (working: CellState[][], hint: Hint): { message: string; changed: boolean } => {
   const targetDigit = hint.digit;
   const eliminationDigits = hint.eliminationDigits ?? (targetDigit !== undefined ? [targetDigit] : []);
-  if (hint.cells.length === 0) {
-    return { message: 'No cells to apply.', changed: false };
-  }
-
+  const start = hint.eliminationStartIndex ?? (hint.cells.length > 1 ? 1 : 0);
+  const eliminationCells = hint.eliminations ?? hint.cells.slice(start);
   const first = hint.cells[0];
-  const firstCell = working[first.row]?.[first.col];
+  const firstCell = first ? working[first.row]?.[first.col] : undefined;
   const placementTypes = ['naked-single', 'hidden-single-row', 'hidden-single-column', 'hidden-single-box'];
-  const isPlacementHint = targetDigit !== undefined && placementTypes.includes(hint.type);
+  const isPlacementHint = targetDigit !== undefined && placementTypes.includes(hint.type) && Boolean(firstCell);
 
   if (isPlacementHint && firstCell && isEditableCell(firstCell)) {
     firstCell.value = targetDigit;
@@ -2591,13 +2498,8 @@ const applyHintToBoard = (working: CellState[][], hint: Hint): { message: string
     };
   }
 
-  const start = hint.eliminationStartIndex ?? (hint.cells.length > 1 ? 1 : 0);
-  const eliminationCells = hint.eliminations ?? hint.cells.slice(start);
-  if (eliminationCells.length === 0) {
+  if (eliminationCells.length === 0 || eliminationDigits.length === 0) {
     return { message: 'No elimination targets in this hint.', changed: false };
-  }
-  if (eliminationDigits.length === 0) {
-    return { message: 'Apply is unavailable for this hint type.', changed: false };
   }
 
   let removed = 0;

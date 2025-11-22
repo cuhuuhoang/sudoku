@@ -79,18 +79,15 @@ describe('applyHintToBoard', () => {
   it('applies forcing chain elimination', () => {
     const board = makeBoard();
     board[1][1].candidates = [3];
-    const hint = {
-      type: 'forcing-chain' as const,
-      title: 'Forcing Chain',
-      message: 'Sample chain',
-      cells: [
-        { row: 0, col: 0 },
-        { row: 1, col: 1 },
-      ],
-      digit: 3,
-      eliminationStartIndex: 1,
-    };
-    const result = applyHintToBoard(board, hint);
+    const result = applyHintToBoard(board, {
+      type: 'locked-claiming',
+      title: '',
+      message: '',
+      cells: [],
+      digit: undefined,
+      eliminations: [{ row: 1, col: 1 }],
+      eliminationDigits: [3],
+    });
     expect(result.changed).toBe(true);
     expect(board[1][1].candidates).not.toContain(3);
   });

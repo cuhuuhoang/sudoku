@@ -66,17 +66,20 @@ const STORAGE_KEY = 'sudoku-current-game-v1';
 const THEME_KEY = 'sudoku-theme';
 const AUTO_SETTINGS_KEY = 'sudoku-auto-settings-v1';
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const BUILD_TIME_OFFSET_MS = 7 * 60 * 60 * 1000;
 const formatBuildTimestamp = (date: Date) => {
+  const target = new Date(date.getTime() + BUILD_TIME_OFFSET_MS);
   const pad = (value: number) => value.toString().padStart(2, '0');
-  const year = pad(date.getFullYear() % 100);
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
+  const year = pad(target.getUTCFullYear() % 100);
+  const month = pad(target.getUTCMonth() + 1);
+  const day = pad(target.getUTCDate());
+  const hours = pad(target.getUTCHours());
+  const minutes = pad(target.getUTCMinutes());
+  const seconds = pad(target.getUTCSeconds());
   return `${year}${month}${day} ${hours}${minutes}${seconds}`;
 };
 
+const BUILD_TIMEZONE_LABEL = 'GMT+7';
 const BUILD_VERSION: string = (() => {
   const raw = import.meta.env.VITE_BUILD_TIMESTAMP;
   if (typeof raw === 'string' && raw.trim().length > 0) {
@@ -591,6 +594,7 @@ function App() {
     setSelectedCell(null);
     setIsMultiSelectMode(false);
     setMultiSelectedKeys(new Set<string>());
+    pointerAddedKeyRef.current = null;
   };
 
   useEffect(() => {
@@ -659,10 +663,14 @@ function App() {
 
   useEffect(() => {
     const endPointerSelection = (event: PointerEvent) => {
+      const targetNode = event.target as Node | null;
+      const insideBoard = targetNode ? boardRef.current?.contains(targetNode) : false;
       isPointerSelecting.current = false;
       dragSelectedKeys.current.clear();
-      pointerAddedKeyRef.current = null;
-      if (boardRef.current && !boardRef.current.contains(event.target as Node)) {
+      if (!insideBoard) {
+        pointerAddedKeyRef.current = null;
+      }
+      if (boardRef.current && !insideBoard) {
         dragMovedRef.current = false;
       }
     };
@@ -726,6 +734,7 @@ function App() {
   };
 
   const toggleMultiSelectMode = () => {
+    pointerAddedKeyRef.current = null;
     setIsMultiSelectMode((prev) => {
       const next = !prev;
       if (next) {
@@ -1401,7 +1410,7 @@ function App() {
         )}
       </div>
       <footer className="build-meta" aria-label="Build metadata">
-        Build {BUILD_VERSION}
+        Build {BUILD_VERSION} {BUILD_TIMEZONE_LABEL}
       </footer>
       {isStateModalOpen && (
         <div className="modal-backdrop" role="presentation" onClick={() => setIsStateModalOpen(false)}>

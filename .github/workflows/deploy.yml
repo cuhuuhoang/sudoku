@@ -32,7 +32,7 @@ jobs:
 
       - name: Build
         run: |
-          export VITE_BUILD_TIMESTAMP="$(date -u +'%y%m%d %H%M%S')"
+          export VITE_BUILD_TIMESTAMP="$(TZ='Asia/Bangkok' date +'%y%m%d %H%M%S')"
           npm run build
 
       - name: Upload artifact

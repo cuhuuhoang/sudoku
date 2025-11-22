@@ -13,6 +13,11 @@ import {
   detectXWing,
   detectXYWing,
   detectXYZWing,
+  detectWWing,
+  detectRemotePair,
+  detectSimpleColoring,
+  detectMultiColoring,
+  detectForcingChains,
   type CellState,
 } from './App';
 
@@ -170,5 +175,57 @@ describe('hint detectors', () => {
     setCandidates(xyzBoard, 0, 1, [1, 3]); // wing shares box/col
     setCandidates(xyzBoard, 2, 2, [1, 4]); // peer of both wings and pivot
     expect(detectXYZWing(xyzBoard)?.type).toBe('xyz-wing');
+  });
+
+  it('detects W-Wing', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]); // wing A
+    setCandidates(board, 1, 1, [1, 2]); // wing B
+    setCandidates(board, 1, 0, [1]); // strong link on 1 in column 0
+    setCandidates(board, 0, 1, [2]); // elimination target sees both wings
+    expect(detectWWing(board)?.type).toBe('w-wing');
+  });
+
+  it('detects Remote Pair', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]); // endpoint A
+    setCandidates(board, 0, 3, [1, 2]); // chain
+    setCandidates(board, 3, 3, [1, 2]); // chain
+    setCandidates(board, 4, 4, [1, 2]); // endpoint B (odd distance)
+    setCandidates(board, 0, 4, [1]); // sees both endpoints
+    expect(detectRemotePair(board)?.type).toBe('remote-pair');
+  });
+
+  it('detects Simple Coloring', () => {
+    const board = makeBoard();
+    // Digit 5 with alternating links
+    setCandidates(board, 0, 0, [5]);
+    setCandidates(board, 0, 2, [5]);
+    setCandidates(board, 2, 0, [5]);
+    setCandidates(board, 2, 2, [5]);
+    setCandidates(board, 1, 1, [5]); // sees both colors
+    expect(detectSimpleColoring(board)?.type).toBe('coloring');
+  });
+
+  it('detects Multi-coloring', () => {
+    const board = makeBoard();
+    // Component 1
+    setCandidates(board, 0, 0, [6]);
+    setCandidates(board, 1, 0, [6]);
+    // Component 2
+    setCandidates(board, 0, 4, [6]);
+    setCandidates(board, 1, 4, [6]);
+    // Break row strong link so components stay separate
+    setCandidates(board, 0, 8, [6]);
+    expect(detectMultiColoring(board)?.type).toBe('multi-coloring');
+  });
+
+  it('detects Forcing Chains', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1, 2]); // pivot
+    setCandidates(board, 0, 1, [1, 3]);
+    setCandidates(board, 1, 0, [2, 3]);
+    setCandidates(board, 1, 1, [3]); // forced in both assumptions
+    expect(detectForcingChains(board, 3)?.type).toBe('forcing-chain');
   });
 });

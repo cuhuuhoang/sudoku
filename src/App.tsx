@@ -23,7 +23,12 @@ type HintType =
   | 'swordfish'
   | 'jellyfish'
   | 'xy-wing'
-  | 'xyz-wing';
+  | 'xyz-wing'
+  | 'w-wing'
+  | 'remote-pair'
+  | 'coloring'
+  | 'multi-coloring'
+  | 'forcing-chain';
 
 interface Hint {
   type: HintType;
@@ -1129,6 +1134,11 @@ export {
   detectFish,
   detectXYWing,
   detectXYZWing,
+  detectWWing,
+  detectRemotePair,
+  detectSimpleColoring,
+  detectMultiColoring,
+  detectForcingChains,
 };
 export type { CellState, CellPointer, AutomationSettings };
 
@@ -1158,6 +1168,11 @@ const findHint = (board: CellState[][]): Hint | null => {
     (b) => detectFish(b, 4, 'jellyfish', 'Jellyfish'),
     detectXYWing,
     detectXYZWing,
+    detectWWing,
+    detectRemotePair,
+    detectSimpleColoring,
+    detectMultiColoring,
+    (b) => detectForcingChains(b, 3),
   ];
   for (const detector of detectors) {
     const hint = detector(board);
@@ -1951,6 +1966,464 @@ const detectXYZWing: HintDetector = (board) => {
           ],
         };
       }
+    }
+  }
+  return null;
+};
+
+const hasStrongLinkInRow = (board: CellState[][], row: number, digit: number, cols: number[]) => {
+  const positions = [];
+  for (let col = 0; col < 9; col += 1) {
+    const cell = board[row][col];
+    if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+      positions.push(col);
+    }
+  }
+  return positions.length === 2 && cols.every((c) => positions.includes(c));
+};
+
+const hasStrongLinkInCol = (board: CellState[][], col: number, digit: number, rows: number[]) => {
+  const positions = [];
+  for (let row = 0; row < 9; row += 1) {
+    const cell = board[row][col];
+    if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+      positions.push(row);
+    }
+  }
+  return positions.length === 2 && rows.every((r) => positions.includes(r));
+};
+
+const detectWWing: HintDetector = (board) => {
+  const pairs: { row: number; col: number; candidates: number[]; peers: Set<string> }[] = [];
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell) && cell.candidates.length === 2) {
+        pairs.push({ row, col, candidates: [...cell.candidates], peers: new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col))) });
+      }
+    }
+  }
+
+  for (let i = 0; i < pairs.length; i += 1) {
+    for (let j = i + 1; j < pairs.length; j += 1) {
+      const a = pairs[i];
+      const b = pairs[j];
+      if (a.row === b.row || a.col === b.col) {
+        continue;
+      }
+      const [x1, y1] = a.candidates.sort();
+      const [x2, y2] = b.candidates.sort();
+      if (x1 !== x2 || y1 !== y2) {
+        continue;
+      }
+      const [x, y] = [x1, y1];
+      const strongLink =
+        hasStrongLinkInCol(board, a.col, x, [a.row, b.row]) ||
+        hasStrongLinkInCol(board, b.col, x, [a.row, b.row]) ||
+        hasStrongLinkInRow(board, a.row, x, [a.col, b.col]) ||
+        hasStrongLinkInRow(board, b.row, x, [a.col, b.col]);
+      if (!strongLink) {
+        continue;
+      }
+      const intersection = new Set<string>();
+      a.peers.forEach((peer) => {
+        if (b.peers.has(peer)) {
+          intersection.add(peer);
+        }
+      });
+      const eliminations: CellPointer[] = [];
+      intersection.forEach((key) => {
+        const { row, col } = parseCellKey(key);
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(y)) {
+          eliminations.push({ row, col });
+        }
+      });
+      if (eliminations.length > 0) {
+        const aLabel = createCellLabel(a.row, a.col);
+        const bLabel = createCellLabel(b.row, b.col);
+        return {
+          type: 'w-wing',
+          title: 'W-Wing',
+          message: `${aLabel} and ${bLabel} share ${x}/${y} with a strong link on ${x}. Remove ${y} from cells seeing both.`,
+          cells: [
+            { row: a.row, col: a.col },
+            { row: b.row, col: b.col },
+            ...eliminations,
+          ],
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const detectRemotePair: HintDetector = (board) => {
+  const pairs: { row: number; col: number; candidates: number[]; peers: Set<string> }[] = [];
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell) && cell.candidates.length === 2) {
+        pairs.push({ row, col, candidates: [...cell.candidates], peers: new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col))) });
+      }
+    }
+  }
+
+  const adj: Map<string, string[]> = new Map();
+  pairs.forEach((cell) => {
+    const key = createCellKey(cell.row, cell.col);
+    const neighbors: string[] = [];
+    pairs.forEach((other) => {
+      if (cell === other) return;
+      if (cell.candidates[0] === other.candidates[0] && cell.candidates[1] === other.candidates[1]) {
+        if (cell.peers.has(createCellKey(other.row, other.col))) {
+          neighbors.push(createCellKey(other.row, other.col));
+        }
+      }
+    });
+    adj.set(key, neighbors);
+  });
+
+  const bfs = (start: string): Map<string, number> => {
+    const dist = new Map<string, number>();
+    dist.set(start, 0);
+    const queue = [start];
+    while (queue.length) {
+      const current = queue.shift() as string;
+      const next = adj.get(current) ?? [];
+      next.forEach((neighbor) => {
+        if (!dist.has(neighbor)) {
+          dist.set(neighbor, (dist.get(current) as number) + 1);
+          queue.push(neighbor);
+        }
+      });
+    }
+    return dist;
+  };
+
+  for (const start of adj.keys()) {
+    const distances = bfs(start);
+    for (const [target, length] of distances.entries()) {
+      if (length === 0 || length % 2 === 0) {
+        continue;
+      }
+      const a = pairs.find((cell) => createCellKey(cell.row, cell.col) === start)!;
+      const b = pairs.find((cell) => createCellKey(cell.row, cell.col) === target)!;
+      if (a.peers.has(createCellKey(b.row, b.col))) {
+        continue;
+      }
+      const intersection = new Set<string>();
+      a.peers.forEach((peer) => {
+        if (b.peers.has(peer)) {
+          intersection.add(peer);
+        }
+      });
+      const eliminations: CellPointer[] = [];
+      intersection.forEach((key) => {
+        const { row, col } = parseCellKey(key);
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.some((digit) => a.candidates.includes(digit))) {
+          eliminations.push({ row, col });
+        }
+      });
+      if (eliminations.length > 0) {
+        return {
+          type: 'remote-pair',
+          title: 'Remote Pair',
+          message: `Odd-length chain of pairs ${a.candidates.join('/')} forces eliminations in overlapping peers.`,
+          cells: [
+            { row: a.row, col: a.col },
+            { row: b.row, col: b.col },
+            ...eliminations,
+          ],
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const detectSimpleColoring: HintDetector = (board) => {
+  const positionsByDigit = new Map<number, CellPointer[]>();
+  DIGITS.forEach((digit) => positionsByDigit.set(digit, []));
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell)) {
+        cell.candidates.forEach((digit) => positionsByDigit.get(digit)?.push({ row, col }));
+      }
+    }
+  }
+
+  for (const digit of DIGITS) {
+    const positions = positionsByDigit.get(digit) ?? [];
+    if (positions.length < 2) {
+      continue;
+    }
+    const edges: Map<string, string[]> = new Map();
+    positions.forEach((pos) => edges.set(createCellKey(pos.row, pos.col), []));
+
+    const addEdge = (a: CellPointer, b: CellPointer) => {
+      const aKey = createCellKey(a.row, a.col);
+      const bKey = createCellKey(b.row, b.col);
+      edges.get(aKey)?.push(bKey);
+      edges.get(bKey)?.push(aKey);
+    };
+
+    // strong links in rows/cols/boxes
+    for (let row = 0; row < 9; row += 1) {
+      const rowPositions = positions.filter((pos) => pos.row === row);
+      if (rowPositions.length === 2) {
+        addEdge(rowPositions[0], rowPositions[1]);
+      }
+    }
+    for (let col = 0; col < 9; col += 1) {
+      const colPositions = positions.filter((pos) => pos.col === col);
+      if (colPositions.length === 2) {
+        addEdge(colPositions[0], colPositions[1]);
+      }
+    }
+    for (let box = 0; box < 9; box += 1) {
+      const boxRow = Math.floor(box / 3) * 3;
+      const boxCol = (box % 3) * 3;
+      const boxPositions = positions.filter((pos) => pos.row >= boxRow && pos.row < boxRow + 3 && pos.col >= boxCol && pos.col < boxCol + 3);
+      if (boxPositions.length === 2) {
+        addEdge(boxPositions[0], boxPositions[1]);
+      }
+    }
+
+    const colorMap = new Map<string, { color: 0 | 1; component: number }>();
+    let component = 0;
+    for (const key of edges.keys()) {
+      if (colorMap.has(key)) continue;
+      const queue: { key: string; color: 0 | 1 }[] = [{ key, color: 0 }];
+      colorMap.set(key, { color: 0, component });
+      while (queue.length) {
+        const { key: current, color } = queue.shift() as { key: string; color: 0 | 1 };
+        (edges.get(current) ?? []).forEach((neighbor) => {
+          if (!colorMap.has(neighbor)) {
+            colorMap.set(neighbor, { color: color === 0 ? 1 : 0, component });
+            queue.push({ key: neighbor, color: color === 0 ? 1 : 0 });
+          }
+        });
+      }
+      component += 1;
+    }
+
+    for (let row = 0; row < 9; row += 1) {
+      for (let col = 0; col < 9; col += 1) {
+        const cell = board[row][col];
+        if (!isEditableCell(cell) || !cell.candidates.includes(digit)) {
+          continue;
+        }
+        const peers = getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col));
+        const seenColors = new Set<number>();
+        peers.forEach((peer) => {
+          const entry = colorMap.get(peer);
+          if (entry) {
+            seenColors.add(entry.color);
+          }
+        });
+        if (seenColors.size === 2) {
+          const coloredCells = Array.from(colorMap.keys()).map((key) => parseCellKey(key));
+          return {
+            type: 'coloring',
+            title: 'Simple Coloring',
+            message: `Digit ${digit} colored in two groups. Cell ${createCellLabel(row, col)} sees both colors, so remove ${digit} here.`,
+            cells: [
+              { row, col },
+              ...coloredCells,
+            ],
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const detectMultiColoring: HintDetector = (board) => {
+  const positionsByDigit = new Map<number, CellPointer[]>();
+  DIGITS.forEach((digit) => positionsByDigit.set(digit, []));
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell)) {
+        cell.candidates.forEach((digit) => positionsByDigit.get(digit)?.push({ row, col }));
+      }
+    }
+  }
+
+  for (const digit of DIGITS) {
+    const positions = positionsByDigit.get(digit) ?? [];
+    if (positions.length < 4) continue;
+
+    const edges: Map<string, string[]> = new Map();
+    positions.forEach((pos) => edges.set(createCellKey(pos.row, pos.col), []));
+
+    const addEdge = (a: CellPointer, b: CellPointer) => {
+      const aKey = createCellKey(a.row, a.col);
+      const bKey = createCellKey(b.row, b.col);
+      edges.get(aKey)?.push(bKey);
+      edges.get(bKey)?.push(aKey);
+    };
+
+    // strong links in rows/cols/boxes
+    for (let row = 0; row < 9; row += 1) {
+      const rowPositions = positions.filter((pos) => pos.row === row);
+      if (rowPositions.length === 2) {
+        addEdge(rowPositions[0], rowPositions[1]);
+      }
+    }
+    for (let col = 0; col < 9; col += 1) {
+      const colPositions = positions.filter((pos) => pos.col === col);
+      if (colPositions.length === 2) {
+        addEdge(colPositions[0], colPositions[1]);
+      }
+    }
+    for (let box = 0; box < 9; box += 1) {
+      const boxRow = Math.floor(box / 3) * 3;
+      const boxCol = (box % 3) * 3;
+      const boxPositions = positions.filter((pos) => pos.row >= boxRow && pos.row < boxRow + 3 && pos.col >= boxCol && pos.col < boxCol + 3);
+      if (boxPositions.length === 2) {
+        addEdge(boxPositions[0], boxPositions[1]);
+      }
+    }
+
+    const colorMap = new Map<string, { color: 0 | 1; component: number }>();
+    let component = 0;
+    for (const key of edges.keys()) {
+      if (colorMap.has(key)) continue;
+      const queue: { key: string; color: 0 | 1 }[] = [{ key, color: 0 }];
+      colorMap.set(key, { color: 0, component });
+      while (queue.length) {
+        const { key: current, color } = queue.shift() as { key: string; color: 0 | 1 };
+        (edges.get(current) ?? []).forEach((neighbor) => {
+          if (!colorMap.has(neighbor)) {
+            colorMap.set(neighbor, { color: color === 0 ? 1 : 0, component });
+            queue.push({ key: neighbor, color: color === 0 ? 1 : 0 });
+          }
+        });
+      }
+      component += 1;
+    }
+
+    const entries = Array.from(colorMap.entries());
+    for (let i = 0; i < entries.length; i += 1) {
+      for (let j = i + 1; j < entries.length; j += 1) {
+        const [keyA, infoA] = entries[i];
+        const [keyB, infoB] = entries[j];
+        if (infoA.component === infoB.component) {
+          continue;
+        }
+        if (infoA.color !== infoB.color) {
+          continue;
+        }
+        const { row: rowA, col: colA } = parseCellKey(keyA);
+        const { row: rowB, col: colB } = parseCellKey(keyB);
+        const peerSetA = new Set(getPeerPointers(rowA, colA).map((p) => createCellKey(p.row, p.col)));
+        if (!peerSetA.has(keyB)) {
+          continue;
+        }
+        const eliminations: CellPointer[] = [];
+        colorMap.forEach((value, key) => {
+          if (value.component === infoA.component && value.color !== infoA.color) {
+            eliminations.push(parseCellKey(key));
+          }
+          if (value.component === infoB.component && value.color !== infoB.color) {
+            eliminations.push(parseCellKey(key));
+          }
+        });
+        if (eliminations.length > 0) {
+          return {
+            type: 'multi-coloring',
+            title: 'Multi-coloring',
+            message: `Digit ${digit} has conflicting same-color groups; opposite colors are forced and can be eliminated.`,
+            cells: eliminations,
+          };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const detectForcingChains = (board: CellState[][], maxDepth: number): Hint | null => {
+  const editableCells: CellPointer[] = [];
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell) && cell.candidates.length === 2) {
+        editableCells.push({ row, col });
+      }
+    }
+  }
+
+  const keyCandidate = (row: number, col: number, digit: number) => `${row}-${col}-${digit}`;
+
+  for (const pivot of editableCells) {
+    const cell = board[pivot.row][pivot.col];
+    const [a, b] = cell.candidates;
+
+    const simulate = (value: number) => {
+      const assumed = cloneBoard(board);
+      assumed[pivot.row][pivot.col].value = value;
+      assumed[pivot.row][pivot.col].candidates = [];
+      const { board: processed } = runAutomation(assumed, { cleanup: true, promote: true, hiddenSingles: true });
+      const removed = new Set<string>();
+      const fixed = new Map<string, number>();
+      for (let row = 0; row < 9; row += 1) {
+        for (let col = 0; col < 9; col += 1) {
+          const before = board[row][col];
+          const after = processed[row][col];
+          if (isEditableCell(before) && after.value !== null) {
+            fixed.set(createCellKey(row, col), after.value);
+          }
+          if (isEditableCell(before)) {
+            before.candidates.forEach((digit) => {
+              if (!after.candidates.includes(digit)) {
+                removed.add(keyCandidate(row, col, digit));
+              }
+            });
+          }
+        }
+      }
+      return { removed, fixed };
+    };
+
+    const first = simulate(a);
+    const second = simulate(b);
+
+    const forcedValues: CellPointer[] = [];
+    first.fixed.forEach((value, key) => {
+      if (second.fixed.get(key) === value) {
+        const { row, col } = parseCellKey(key);
+        forcedValues.push({ row, col });
+      }
+    });
+    if (forcedValues.length > 0) {
+      return {
+        type: 'forcing-chain',
+        title: 'Forcing Chain',
+        message: `Assuming either ${a} or ${b} in ${createCellLabel(pivot.row, pivot.col)} forces other cells. Apply the shared forced placements.`,
+        cells: [{ row: pivot.row, col: pivot.col }, ...forcedValues],
+      };
+    }
+
+    const eliminations: CellPointer[] = [];
+    first.removed.forEach((entry) => {
+      if (second.removed.has(entry)) {
+        const [row, col] = entry.split('-').slice(0, 2).map(Number);
+        eliminations.push({ row, col });
+      }
+    });
+    if (eliminations.length > 0) {
+      return {
+        type: 'forcing-chain',
+        title: 'Forcing Chain',
+        message: `Both assumptions for ${createCellLabel(pivot.row, pivot.col)} eliminate the same candidates elsewhere.`,
+        cells: [{ row: pivot.row, col: pivot.col }, ...eliminations],
+      };
     }
   }
   return null;

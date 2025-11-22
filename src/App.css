@@ -252,6 +252,12 @@ button.ghost {
   color: var(--button-text);
 }
 
+.multi-toggle {
+  margin-bottom: 0.5rem;
+  min-height: 2.4rem;
+  font-size: 0.8rem;
+}
+
 .digit-matrix {
   width: 100%;
   display: grid;

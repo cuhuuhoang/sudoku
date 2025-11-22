@@ -320,6 +320,19 @@ function App() {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
+  const toggleMultiSelectMode = () => {
+    setIsMultiSelectMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setSelectedCell(null);
+        setMultiSelectedKeys(new Set<string>());
+      } else {
+        setMultiSelectedKeys(new Set<string>());
+      }
+      return next;
+    });
+  };
+
   const recordSnapshot = () => {
     if (!board.length) {
       return;
@@ -694,6 +707,13 @@ function App() {
               </div>
             </div>
             <div className="pad" ref={padRef}>
+              <button
+                type="button"
+                className={isMultiSelectMode ? 'digit active multi-toggle' : 'digit multi-toggle'}
+                onClick={toggleMultiSelectMode}
+              >
+                {isMultiSelectMode ? 'Done selecting' : 'Select multiple'}
+              </button>
               <div className="pad-row">
                 <div className="pad-column">
                   <p className="section-title">Set Value</p>

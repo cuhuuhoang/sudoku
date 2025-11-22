@@ -692,9 +692,11 @@ function App() {
   };
 
   const handleNewSameLevel = () => {
-    if (isBrowser && !window.confirm(`Start a new ${level} puzzle? Current progress will be lost.`)) {
-      setStatus('New puzzle canceled.');
-      return;
+    if (!solved) {
+      if (isBrowser && !window.confirm(`Start a new ${level} puzzle? Current progress will be lost.`)) {
+        setStatus('New puzzle canceled.');
+        return;
+      }
     }
     startGame(level);
   };

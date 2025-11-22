@@ -15,7 +15,6 @@ import {
   detectXYZWing,
   detectWWing,
   detectRemotePair,
-  detectSimpleColoring,
   detectMultiColoring,
   detectForcingChains,
   type CellState,
@@ -234,17 +233,6 @@ describe('hint detectors', () => {
     setCandidates(board, 4, 4, [1, 2]); // endpoint B (odd distance)
     setCandidates(board, 0, 4, [1]); // sees both endpoints
     expect(detectRemotePair(board)?.type).toBe('remote-pair');
-  });
-
-  it('detects Simple Coloring', () => {
-    const board = makeBoard();
-    // Digit 5 with alternating links
-    setCandidates(board, 0, 0, [5]);
-    setCandidates(board, 0, 2, [5]);
-    setCandidates(board, 2, 0, [5]);
-    setCandidates(board, 2, 2, [5]);
-    setCandidates(board, 1, 1, [5]); // sees both colors
-    expect(detectSimpleColoring(board)?.type).toBe('coloring');
   });
 
   it('detects Multi-coloring', () => {

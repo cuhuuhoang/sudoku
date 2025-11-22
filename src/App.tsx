@@ -26,7 +26,6 @@ type HintType =
   | 'xyz-wing'
   | 'w-wing'
   | 'remote-pair'
-  | 'coloring'
   | 'multi-coloring'
   | 'forcing-chain';
 
@@ -1438,7 +1437,6 @@ export {
   detectXYZWing,
   detectWWing,
   detectRemotePair,
-  detectSimpleColoring,
   detectMultiColoring,
   detectForcingChains,
   encodeGameState,
@@ -1475,7 +1473,6 @@ const findHint = (board: CellState[][]): Hint | null => {
     detectXYZWing,
     detectWWing,
     detectRemotePair,
-    detectSimpleColoring,
     detectMultiColoring,
     (b) => detectForcingChains(b, 3),
   ];
@@ -2483,107 +2480,6 @@ const detectRemotePair: HintDetector = (board) => {
           eliminationStartIndex: 2,
           };
         }
-    }
-  }
-  return null;
-};
-
-const detectSimpleColoring: HintDetector = (board) => {
-  const positionsByDigit = new Map<number, CellPointer[]>();
-  DIGITS.forEach((digit) => positionsByDigit.set(digit, []));
-  for (let row = 0; row < 9; row += 1) {
-    for (let col = 0; col < 9; col += 1) {
-      const cell = board[row][col];
-      if (isEditableCell(cell)) {
-        cell.candidates.forEach((digit) => positionsByDigit.get(digit)?.push({ row, col }));
-      }
-    }
-  }
-
-  for (const digit of DIGITS) {
-    const positions = positionsByDigit.get(digit) ?? [];
-    if (positions.length < 2) {
-      continue;
-    }
-    const edges: Map<string, string[]> = new Map();
-    positions.forEach((pos) => edges.set(createCellKey(pos.row, pos.col), []));
-
-    const addEdge = (a: CellPointer, b: CellPointer) => {
-      const aKey = createCellKey(a.row, a.col);
-      const bKey = createCellKey(b.row, b.col);
-      edges.get(aKey)?.push(bKey);
-      edges.get(bKey)?.push(aKey);
-    };
-
-    // strong links in rows/cols/boxes
-    for (let row = 0; row < 9; row += 1) {
-      const rowPositions = positions.filter((pos) => pos.row === row);
-      if (rowPositions.length === 2) {
-        addEdge(rowPositions[0], rowPositions[1]);
-      }
-    }
-    for (let col = 0; col < 9; col += 1) {
-      const colPositions = positions.filter((pos) => pos.col === col);
-      if (colPositions.length === 2) {
-        addEdge(colPositions[0], colPositions[1]);
-      }
-    }
-    for (let box = 0; box < 9; box += 1) {
-      const boxRow = Math.floor(box / 3) * 3;
-      const boxCol = (box % 3) * 3;
-      const boxPositions = positions.filter((pos) => pos.row >= boxRow && pos.row < boxRow + 3 && pos.col >= boxCol && pos.col < boxCol + 3);
-      if (boxPositions.length === 2) {
-        addEdge(boxPositions[0], boxPositions[1]);
-      }
-    }
-
-    const colorMap = new Map<string, { color: 0 | 1; component: number }>();
-    let component = 0;
-    for (const key of edges.keys()) {
-      if (colorMap.has(key)) continue;
-      const queue: { key: string; color: 0 | 1 }[] = [{ key, color: 0 }];
-      colorMap.set(key, { color: 0, component });
-      while (queue.length) {
-        const { key: current, color } = queue.shift() as { key: string; color: 0 | 1 };
-        (edges.get(current) ?? []).forEach((neighbor) => {
-          if (!colorMap.has(neighbor)) {
-            colorMap.set(neighbor, { color: color === 0 ? 1 : 0, component });
-            queue.push({ key: neighbor, color: color === 0 ? 1 : 0 });
-          }
-        });
-      }
-      component += 1;
-    }
-
-    for (let row = 0; row < 9; row += 1) {
-      for (let col = 0; col < 9; col += 1) {
-        const cell = board[row][col];
-        if (!isEditableCell(cell) || !cell.candidates.includes(digit)) {
-          continue;
-        }
-        const peers = getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col));
-        const seenColors = new Set<number>();
-        peers.forEach((peer) => {
-          const entry = colorMap.get(peer);
-          if (entry) {
-            seenColors.add(entry.color);
-          }
-        });
-        if (seenColors.size === 2) {
-          const coloredCells = Array.from(colorMap.keys()).map((key) => parseCellKey(key));
-          return {
-            type: 'coloring',
-            title: 'Simple Coloring',
-            message: `Digit ${digit} colored in two groups. Cell ${createCellLabel(row, col)} sees both colors, so remove ${digit} here.`,
-            cells: [
-              { row, col },
-              ...coloredCells,
-            ],
-            digit,
-            eliminationStartIndex: 0,
-          };
-        }
-      }
     }
   }
   return null;

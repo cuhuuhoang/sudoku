@@ -305,6 +305,22 @@ button.ghost {
   color: var(--subtext);
 }
 
+.hint-panel.desktop-only {
+  display: none;
+}
+
+.hint-panel.mobile-only {
+  display: flex;
+}
+
+.hint-panel.desktop-only {
+  display: none;
+}
+
+.hint-panel.mobile-only {
+  display: flex;
+}
+
 .status {
   width: 100%;
   margin: 0;

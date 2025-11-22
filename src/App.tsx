@@ -837,7 +837,7 @@ function App() {
               >
                 Clear Value
               </button>
-              <div className="hint-panel">
+              <div className="hint-panel mobile-only">
                 <button className="ghost hint-button" onClick={handleHint} disabled={!board.length}>
                   Show Hint
                 </button>
@@ -859,6 +859,20 @@ function App() {
             <button onClick={handleUndo} disabled={!canUndo}>
               Undo
             </button>
+            <div className="hint-panel desktop-only">
+              <button className="ghost hint-button" onClick={handleHint} disabled={!board.length}>
+                Show Hint
+              </button>
+              <p className="hint-message">
+                {activeHint ? (
+                  <>
+                    <strong>{activeHint.title}:</strong> {activeHint.message}
+                  </>
+                ) : (
+                  'Tap Hint to highlight a solvable pattern.'
+                )}
+              </p>
+            </div>
             <div className="control-note muted">Candidates clean up & singles promote automatically.</div>
           </div>
           </div>

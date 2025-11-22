@@ -66,6 +66,24 @@ const STORAGE_KEY = 'sudoku-current-game-v1';
 const THEME_KEY = 'sudoku-theme';
 const AUTO_SETTINGS_KEY = 'sudoku-auto-settings-v1';
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+const formatBuildTimestamp = (date: Date) => {
+  const pad = (value: number) => value.toString().padStart(2, '0');
+  const year = pad(date.getFullYear() % 100);
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${year}${month}${day} ${hours}${minutes}${seconds}`;
+};
+
+const BUILD_VERSION: string = (() => {
+  const raw = import.meta.env.VITE_BUILD_TIMESTAMP;
+  if (typeof raw === 'string' && raw.trim().length > 0) {
+    return raw.trim();
+  }
+  return formatBuildTimestamp(new Date());
+})();
 const createCellKey = (row: number, col: number) => `${row}-${col}`;
 const parseCellKey = (key: string): CellPointer => {
   const [row, col] = key.split('-').map(Number);
@@ -1060,35 +1078,36 @@ function App() {
 
   return (
     <div className="app-shell">
-      {screen === 'setup' && (
-        <div className="card">
-          <h1>Sudoku Trainer</h1>
-          <p className="lead">Choose a difficulty to spin up a fresh puzzle or reload what you were working on.</p>
-          <div className="levels">
-            {difficultyOptions.map((option) => (
-              <button
-                key={option.id}
-                className="level-option"
-                disabled={isGenerating}
-                onClick={() => startGame(option.id)}
-              >
-                <span className="level-title">{option.title}</span>
-                <span className="level-subtitle">{option.subtitle}</span>
-              </button>
-            ))}
+      <div className="app-body">
+        {screen === 'setup' && (
+          <div className="card">
+            <h1>Sudoku Trainer</h1>
+            <p className="lead">Choose a difficulty to spin up a fresh puzzle or reload what you were working on.</p>
+            <div className="levels">
+              {difficultyOptions.map((option) => (
+                <button
+                  key={option.id}
+                  className="level-option"
+                  disabled={isGenerating}
+                  onClick={() => startGame(option.id)}
+                >
+                  <span className="level-title">{option.title}</span>
+                  <span className="level-subtitle">{option.subtitle}</span>
+                </button>
+              ))}
+            </div>
+            <button className="ghost" onClick={handleLoadSaved} disabled={!hasSavedGame}>
+              Load Saved Game
+            </button>
+            {isGenerating && <p className="muted">{status}</p>}
+            <button className="theme-toggle" onClick={toggleTheme}>
+              {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
+            </button>
           </div>
-          <button className="ghost" onClick={handleLoadSaved} disabled={!hasSavedGame}>
-            Load Saved Game
-          </button>
-          {isGenerating && <p className="muted">{status}</p>}
-          <button className="theme-toggle" onClick={toggleTheme}>
-            {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
-          </button>
-        </div>
-      )}
+        )}
 
-      {screen === 'game' && (
-        <div className="game-layout">
+        {screen === 'game' && (
+          <div className="game-layout">
           <div className="toolbar">
             <button className="ghost" onClick={handleBackToLevels}>
               ← Levels
@@ -1379,7 +1398,11 @@ function App() {
             {theme === 'light' ? 'Switch to Night Mode' : 'Switch to Day Mode'}
           </button>
         </div>
-      )}
+        )}
+      </div>
+      <footer className="build-meta" aria-label="Build metadata">
+        Build {BUILD_VERSION}
+      </footer>
       {isStateModalOpen && (
         <div className="modal-backdrop" role="presentation" onClick={() => setIsStateModalOpen(false)}>
           <div

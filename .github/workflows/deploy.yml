@@ -31,7 +31,9 @@ jobs:
         run: npm install
 
       - name: Build
-        run: npm run build
+        run: |
+          export VITE_BUILD_TIMESTAMP="$(date -u +'%y%m%d %H%M%S')"
+          npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

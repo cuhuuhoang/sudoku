@@ -51,6 +51,7 @@ interface SavedGame {
 interface AutomationSettings {
   cleanup: boolean;
   promote: boolean;
+  hiddenSingles: boolean;
 }
 
 const STORAGE_KEY = 'sudoku-current-game-v1';
@@ -116,22 +117,23 @@ const readSavedGame = (): SavedGame | null => {
 
 const readAutomationSettings = (): AutomationSettings => {
   if (!isBrowser) {
-    return { cleanup: true, promote: true };
+    return { cleanup: true, promote: true, hiddenSingles: true };
   }
 
   try {
     const cached = localStorage.getItem(AUTO_SETTINGS_KEY);
     if (!cached) {
-      return { cleanup: true, promote: true };
+      return { cleanup: true, promote: true, hiddenSingles: true };
     }
     const parsed = JSON.parse(cached) as Partial<AutomationSettings>;
     return {
       cleanup: parsed.cleanup !== undefined ? parsed.cleanup : true,
       promote: parsed.promote !== undefined ? parsed.promote : true,
+      hiddenSingles: parsed.hiddenSingles !== undefined ? parsed.hiddenSingles : true,
     };
   } catch (error) {
     console.warn('Unable to read automation settings', error);
-    return { cleanup: true, promote: true };
+    return { cleanup: true, promote: true, hiddenSingles: true };
   }
 };
 
@@ -218,24 +220,103 @@ const promoteSingles = (source: CellState[][]): { board: CellState[][]; promoted
   return { board, promoted };
 };
 
+const promoteHiddenSingles = (source: CellState[][]): { board: CellState[][]; promoted: number } => {
+  const board = cloneBoard(source);
+  let promoted = 0;
+
+  const tryPromote = (row: number, col: number, value: number) => {
+    const cell = board[row][col];
+    if (!cell.given && cell.value === null) {
+      cell.value = value;
+      cell.candidates = [];
+      promoted += 1;
+    }
+  };
+
+  for (const digit of DIGITS) {
+    // Rows
+    for (let row = 0; row < 9; row += 1) {
+      const candidates = [];
+      for (let col = 0; col < 9; col += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          candidates.push(col);
+        }
+      }
+      if (candidates.length === 1) {
+        tryPromote(row, candidates[0], digit);
+      }
+    }
+
+    // Columns
+    for (let col = 0; col < 9; col += 1) {
+      const candidates = [];
+      for (let row = 0; row < 9; row += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          candidates.push(row);
+        }
+      }
+      if (candidates.length === 1) {
+        tryPromote(candidates[0], col, digit);
+      }
+    }
+
+    // Boxes
+    for (let boxRow = 0; boxRow < 3; boxRow += 1) {
+      for (let boxCol = 0; boxCol < 3; boxCol += 1) {
+        const startRow = boxRow * 3;
+        const startCol = boxCol * 3;
+        const candidates: CellPointer[] = [];
+        for (let row = startRow; row < startRow + 3; row += 1) {
+          for (let col = startCol; col < startCol + 3; col += 1) {
+            const cell = board[row][col];
+            if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+              candidates.push({ row, col });
+            }
+          }
+        }
+        if (candidates.length === 1) {
+          tryPromote(candidates[0].row, candidates[0].col, digit);
+        }
+      }
+    }
+  }
+
+  return { board, promoted };
+};
+
 const runAutomation = (
   source: CellState[][],
-  options: { cleanup?: boolean; promote?: boolean } = {},
+  options: { cleanup?: boolean; promote?: boolean; hiddenSingles?: boolean } = {},
 ): { board: CellState[][]; promoted: number } => {
   const shouldCleanup = options.cleanup ?? true;
   const shouldPromote = options.promote ?? true;
+  const shouldPromoteHidden = options.hiddenSingles ?? true;
   let working = shouldCleanup ? autoCleanCandidates(source) : cloneBoard(source);
   let totalPromoted = 0;
-  if (!shouldPromote) {
-    return { board: working, promoted: totalPromoted };
-  }
   while (true) {
-    const { board: promotedBoard, promoted } = promoteSingles(working);
-    if (promoted === 0) {
-      return { board: shouldCleanup ? working : promotedBoard, promoted: totalPromoted };
+    let loopPromoted = 0;
+
+    if (shouldPromoteHidden) {
+      const { board: promotedHiddenBoard, promoted } = promoteHiddenSingles(working);
+      loopPromoted += promoted;
+      working = promotedHiddenBoard;
     }
-    totalPromoted += promoted;
-    working = shouldCleanup ? autoCleanCandidates(promotedBoard) : promotedBoard;
+
+    if (shouldPromote) {
+      const { board: promotedBoard, promoted } = promoteSingles(working);
+      loopPromoted += promoted;
+      working = promotedBoard;
+    }
+
+    if (loopPromoted === 0) {
+      return { board: shouldCleanup ? autoCleanCandidates(working) : working, promoted: totalPromoted };
+    }
+    totalPromoted += loopPromoted;
+    if (shouldCleanup) {
+      working = autoCleanCandidates(working);
+    }
   }
 };
 
@@ -934,6 +1015,19 @@ function App() {
                 <div className="toggle-copy">
                   <span className="toggle-title">Singles promote</span>
                   <span className="muted">Auto-fill cells that only allow one candidate.</span>
+                </div>
+              </label>
+              <label className="toggle-option">
+                <input
+                  type="checkbox"
+                  checked={automationSettings.hiddenSingles}
+                  onChange={(event) =>
+                    setAutomationSettings((prev) => ({ ...prev, hiddenSingles: event.target.checked }))
+                  }
+                />
+                <div className="toggle-copy">
+                  <span className="toggle-title">Hidden singles</span>
+                  <span className="muted">Promote digits that are the only option in a row, column, or box.</span>
                 </div>
               </label>
             </div>

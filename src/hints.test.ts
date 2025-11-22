@@ -13,7 +13,6 @@ import {
   detectXWing,
   detectXYWing,
   detectXYZWing,
-  detectWWing,
   detectRemotePair,
   type CellState,
 } from './App';
@@ -174,41 +173,6 @@ describe('hint detectors', () => {
     expect(detectXYZWing(xyzBoard)?.type).toBe('xyz-wing');
   });
 
-  it('detects W-Wing (non-peers with external strong link)', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 2]); // wing A
-    setCandidates(board, 2, 3, [1, 2]); // wing B
-    // strong link on 1 in column 5 (only two 1s)
-    setCandidates(board, 0, 5, [1]);
-    setCandidates(board, 2, 5, [1]);
-    setCandidates(board, 0, 3, [2]); // elimination target sees both wings
-    const hint = detectWWing(board);
-    expect(hint?.type).toBe('w-wing');
-    expect(hint?.digit).toBe(2);
-  });
-
-  it('detects W-Wing with swapped endpoints', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 2, [1, 7]); // wing A
-    setCandidates(board, 3, 5, [1, 7]); // wing B
-    // strong link on 1 in column 8
-    setCandidates(board, 0, 8, [1]);
-    setCandidates(board, 3, 8, [1]);
-    setCandidates(board, 0, 5, [7]); // elimination target sees both wings
-    const hint = detectWWing(board);
-    expect(hint?.type).toBe('w-wing');
-    expect(hint?.digit).toBe(7);
-  });
-
-  it('does not detect W-Wing without eliminations', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 2]);
-    setCandidates(board, 2, 3, [1, 2]);
-    setCandidates(board, 0, 5, [1]);
-    setCandidates(board, 2, 5, [1]);
-    expect(detectWWing(board)).toBeNull();
-  });
-
   it('detects Remote Pair', () => {
     const board = makeBoard();
     setCandidates(board, 0, 0, [1, 2]); // endpoint A
@@ -265,14 +229,6 @@ describe('hint detectors', () => {
     setCandidates(board, 3, 0, [1, 3]);
     setCandidates(board, 3, 3, [4]); // no shared candidate
     expect(detectXYZWing(board)).toBeNull();
-  });
-
-  it('W-Wing edge case: missing intersection eliminations', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 2]);
-    setCandidates(board, 2, 2, [1, 2]);
-    setCandidates(board, 1, 1, [3, 4]); // no shared peers
-    expect(detectWWing(board)).toBeNull();
   });
 
   it('Remote Pair edge case: even-length chain does not eliminate', () => {

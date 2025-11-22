@@ -320,6 +320,11 @@ button.ghost {
   font-size: 0.85rem;
 }
 
+.small-feedback {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .pad {
   width: 100%;
   background: var(--control-bg);

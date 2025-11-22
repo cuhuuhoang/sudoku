@@ -566,6 +566,7 @@ function App() {
   const [exportText, setExportText] = useState('');
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState('');
 
   const resetSelectionState = () => {
     setSelectedCell(null);
@@ -879,14 +880,18 @@ function App() {
       try {
         await navigator.clipboard.writeText(encoded);
         setStatus('State copied to clipboard.');
+        setCopyFeedback('Copied to clipboard.');
       } catch (error) {
         console.warn('Clipboard copy failed', error);
         setStatus('Copied to export field. Clipboard unavailable.');
+        setCopyFeedback('Copied to export field. Clipboard unavailable.');
       }
     } else if (copyToClipboard) {
       setStatus('Copied to export field.');
+      setCopyFeedback('Copied to export field.');
     } else {
       setStatus('State copied to export field.');
+      setCopyFeedback('');
     }
   };
 
@@ -918,6 +923,7 @@ function App() {
   useEffect(() => {
     if (isStateModalOpen) {
       setImportError(null);
+      setCopyFeedback('');
       handleExportState(false);
     }
   }, [isStateModalOpen]);
@@ -1354,6 +1360,7 @@ function App() {
                     Copy to clipboard
                   </button>
                 </div>
+                {copyFeedback && <p className="muted small-feedback">{copyFeedback}</p>}
                 <textarea
                   value={exportText}
                   readOnly

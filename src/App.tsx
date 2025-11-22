@@ -2329,49 +2329,104 @@ const hasStrongLinkInCol = (board: CellState[][], col: number, digit: number, ro
 };
 
 const detectWWing: HintDetector = (board) => {
-  const pairs: { row: number; col: number; candidates: number[]; peers: Set<string> }[] = [];
+  const peersKey = (cell: CellPointer) => createCellKey(cell.row, cell.col);
+  const peerSets = new Map<string, Set<string>>();
+  const getPeerSet = (row: number, col: number) => {
+    const key = peersKey({ row, col });
+    if (!peerSets.has(key)) {
+      peerSets.set(key, new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col))));
+    }
+    return peerSets.get(key)!;
+  };
+
+  const strongLinks = new Map<number, CellPointer[][]>(); // digit -> pairs
+  DIGITS.forEach((digit) => strongLinks.set(digit, []));
+  // rows
   for (let row = 0; row < 9; row += 1) {
-    for (let col = 0; col < 9; col += 1) {
-      const cell = board[row][col];
-      if (isEditableCell(cell) && cell.candidates.length === 2) {
-        pairs.push({ row, col, candidates: [...cell.candidates], peers: new Set(getPeerPointers(row, col).map((p) => createCellKey(p.row, p.col))) });
+    for (const digit of DIGITS) {
+      const spots = [];
+      for (let col = 0; col < 9; col += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          spots.push({ row, col });
+        }
+      }
+      if (spots.length === 2) {
+        strongLinks.get(digit)!.push(spots);
+      }
+    }
+  }
+  // cols
+  for (let col = 0; col < 9; col += 1) {
+    for (const digit of DIGITS) {
+      const spots = [];
+      for (let row = 0; row < 9; row += 1) {
+        const cell = board[row][col];
+        if (isEditableCell(cell) && cell.candidates.includes(digit)) {
+          spots.push({ row, col });
+        }
+      }
+      if (spots.length === 2) {
+        strongLinks.get(digit)!.push(spots);
       }
     }
   }
 
-  for (let i = 0; i < pairs.length; i += 1) {
-    for (let j = i + 1; j < pairs.length; j += 1) {
-      const a = pairs[i];
-      const b = pairs[j];
+  const bivalue: { row: number; col: number; candidates: number[] }[] = [];
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const cell = board[row][col];
+      if (isEditableCell(cell) && cell.candidates.length === 2) {
+        bivalue.push({ row, col, candidates: [...cell.candidates] });
+      }
+    }
+  }
+
+  const arePeers = (a: CellPointer, b: CellPointer) =>
+    a.row === b.row || a.col === b.col || Math.floor(a.row / 3) === Math.floor(b.row / 3) && Math.floor(a.col / 3) === Math.floor(b.col / 3);
+
+  for (let i = 0; i < bivalue.length; i += 1) {
+    for (let j = i + 1; j < bivalue.length; j += 1) {
+      const a = bivalue[i];
+      const b = bivalue[j];
+      if (arePeers(a, b)) {
+        continue;
+      }
       const [x1, y1] = a.candidates.sort();
       const [x2, y2] = b.candidates.sort();
       if (x1 !== x2 || y1 !== y2) {
         continue;
       }
       const [x, y] = [x1, y1];
-      const strongLink =
-        hasStrongLinkInCol(board, a.col, x, [a.row, b.row]) ||
-        hasStrongLinkInCol(board, b.col, x, [a.row, b.row]) ||
-        hasStrongLinkInRow(board, a.row, x, [a.col, b.col]) ||
-        hasStrongLinkInRow(board, b.row, x, [a.col, b.col]);
-      if (!strongLink) {
-        continue;
-      }
-      const intersection = new Set<string>();
-      a.peers.forEach((peer) => {
-        if (b.peers.has(peer)) {
-          intersection.add(peer);
+      const links = strongLinks.get(x) ?? [];
+      for (const [p1, p2] of links) {
+        const aPeers = getPeerSet(a.row, a.col);
+        const bPeers = getPeerSet(b.row, b.col);
+        const matchA1 = p1.row === a.row && p1.col === a.col ? true : aPeers.has(peersKey(p1));
+        const matchA2 = p2.row === a.row && p2.col === a.col ? true : aPeers.has(peersKey(p2));
+        const matchB1 = p1.row === b.row && p1.col === b.col ? true : bPeers.has(peersKey(p1));
+        const matchB2 = p2.row === b.row && p2.col === b.col ? true : bPeers.has(peersKey(p2));
+        const matches = (matchA1 && matchB2) || (matchA2 && matchB1);
+        if (!matches) {
+          continue;
         }
-      });
-      const eliminations: CellPointer[] = [];
-      intersection.forEach((key) => {
-        const { row, col } = parseCellKey(key);
-        const cell = board[row][col];
-        if (isEditableCell(cell) && cell.candidates.includes(y)) {
-          eliminations.push({ row, col });
+        const intersection = new Set<string>();
+        aPeers.forEach((peer) => {
+          if (bPeers.has(peer)) {
+            intersection.add(peer);
+          }
+        });
+        const eliminations: CellPointer[] = [];
+        intersection.forEach((key) => {
+          const { row, col } = parseCellKey(key);
+          const cell = board[row][col];
+          if (isEditableCell(cell) && cell.candidates.includes(y)) {
+            eliminations.push({ row, col });
+          }
+        });
+        if (eliminations.length === 0) {
+          continue;
         }
-      });
-      if (eliminations.length > 0) {
         const aLabel = createCellLabel(a.row, a.col);
         const bLabel = createCellLabel(b.row, b.col);
         return {
@@ -2381,9 +2436,9 @@ const detectWWing: HintDetector = (board) => {
           cells: [
             { row: a.row, col: a.col },
             { row: b.row, col: b.col },
-            ...eliminations,
           ],
           digit: y,
+          eliminations,
           eliminationStartIndex: 2,
         };
       }

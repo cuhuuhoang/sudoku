@@ -50,16 +50,20 @@ describe('applyHintToBoard', () => {
 
   it('applies W-Wing elimination', () => {
     const board = makeBoard();
+    // Wings not peers
     board[0][0].candidates = [1, 2];
-    board[1][2].candidates = [1, 2];
-    board[1][0].candidates = [1, 2]; // strong link on 1 in column 0
-    board[2][2].candidates = [2]; // elimination target sees both wings
+    board[2][3].candidates = [1, 2];
+    // Strong link on 1 in column 5 (only two 1s)
+    board[0][5].candidates = [1];
+    board[2][5].candidates = [1];
+    // Elimination target sees both wings
+    board[0][3].candidates = [2];
     const hint = detectWWing(board);
     expect(hint?.type).toBe('w-wing');
     if (!hint) return;
     const result = applyHintToBoard(board, hint);
     expect(result.changed).toBe(true);
-    expect(board[2][2].candidates).not.toContain(2);
+    expect(board[0][3].candidates).not.toContain(2);
   });
 
   // W-Wing diagonal/edge cases are covered in detector tests; apply tested above

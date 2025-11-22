@@ -174,52 +174,38 @@ describe('hint detectors', () => {
     expect(detectXYZWing(xyzBoard)?.type).toBe('xyz-wing');
   });
 
-  it('detects W-Wing', () => {
+  it('detects W-Wing (non-peers with external strong link)', () => {
     const board = makeBoard();
     setCandidates(board, 0, 0, [1, 2]); // wing A
-    setCandidates(board, 1, 1, [1, 2]); // wing B
-    setCandidates(board, 1, 0, [1]); // strong link on 1 in column 0
-    setCandidates(board, 0, 1, [2]); // elimination target sees both wings
-    expect(detectWWing(board)?.type).toBe('w-wing');
-  });
-
-  it('detects W-Wing via row strong link', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 2]); // wing A
-    setCandidates(board, 1, 2, [1, 2]); // wing B
-    setCandidates(board, 1, 0, [1, 2]); // strong link on 1 in column 0 (rows 0 and 1)
+    setCandidates(board, 2, 3, [1, 2]); // wing B
+    // strong link on 1 in column 5 (only two 1s)
+    setCandidates(board, 0, 5, [1]);
+    setCandidates(board, 2, 5, [1]);
+    setCandidates(board, 0, 3, [2]); // elimination target sees both wings
     const hint = detectWWing(board);
     expect(hint?.type).toBe('w-wing');
+    expect(hint?.digit).toBe(2);
   });
 
-  it('detects W-Wing with column link and eliminations', () => {
+  it('detects W-Wing with swapped endpoints', () => {
     const board = makeBoard();
-    setCandidates(board, 0, 0, [1, 6]); // wing A
-    setCandidates(board, 2, 0, [1, 6]); // wing B (same column, different box)
-    setCandidates(board, 1, 0, [6]); // elimination target sees both wings
+    setCandidates(board, 0, 2, [1, 7]); // wing A
+    setCandidates(board, 3, 5, [1, 7]); // wing B
+    // strong link on 1 in column 8
+    setCandidates(board, 0, 8, [1]);
+    setCandidates(board, 3, 8, [1]);
+    setCandidates(board, 0, 5, [7]); // elimination target sees both wings
     const hint = detectWWing(board);
     expect(hint?.type).toBe('w-wing');
-    expect(hint?.digit).toBe(6);
-    expect(hint?.cells.slice(0, 2)).toEqual([
-      { row: 0, col: 0 },
-      { row: 2, col: 0 },
-    ]);
+    expect(hint?.digit).toBe(7);
   });
 
-  it('detects W-Wing with row link and eliminations', () => {
-    const board = makeBoard();
-    setCandidates(board, 0, 1, [2, 5]); // wing A
-    setCandidates(board, 0, 4, [2, 5]); // wing B (same row, different box)
-    setCandidates(board, 0, 7, [5]); // elimination target sees both wings
-    const hint = detectWWing(board);
-    expect(hint?.type).toBe('w-wing');
-    expect(hint?.digit).toBe(5);
-  });
-
-  it('does not detect W-Wing without a strong link', () => {
+  it('does not detect W-Wing without eliminations', () => {
     const board = makeBoard();
     setCandidates(board, 0, 0, [1, 2]);
-    setCandidates(board, 1, 1, [1, 2]); // no strong link on either digit
+    setCandidates(board, 2, 3, [1, 2]);
+    setCandidates(board, 0, 5, [1]);
+    setCandidates(board, 2, 5, [1]);
     expect(detectWWing(board)).toBeNull();
   });
 

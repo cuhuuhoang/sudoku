@@ -62,6 +62,19 @@ describe('applyHintToBoard', () => {
     expect(board[2][2].candidates).not.toContain(2);
   });
 
+  it('applies W-Wing elimination with row link', () => {
+    const board = makeBoard();
+    board[0][1].candidates = [1, 8]; // wing A
+    board[0][5].candidates = [1, 8]; // wing B (same row, strong link on 1)
+    board[0][3].candidates = [8]; // elimination target sees both wings
+    const hint = detectWWing(board);
+    expect(hint?.type).toBe('w-wing');
+    if (!hint) return;
+    const result = applyHintToBoard(board, hint);
+    expect(result.changed).toBe(true);
+    expect(board[0][3].candidates).not.toContain(8);
+  });
+
   it('applies XY-Wing elimination', () => {
     const board = makeBoard();
     board[0][0].candidates = [1, 2]; // pivot

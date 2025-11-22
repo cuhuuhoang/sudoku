@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeGameState, encodeGameState, type CellState } from './App';
+import { decodeGameState, encodeGameState, findHint, type CellState } from './App';
 
 const makeBoard = (): CellState[][] =>
   Array.from({ length: 9 }, (_r, row) =>
@@ -48,5 +48,14 @@ describe('state encoding', () => {
   it('returns null for invalid data', () => {
     expect(decodeGameState('')).toBeNull();
     expect(decodeGameState('@@@')).toBeNull();
+  });
+
+  it('detects W-Wing in provided snapshot', () => {
+    const encoded =
+      'AwAEAAoAJgAOABAADAAIABIAIgAQACgAMgUAACoFAAAsAA4ABCEAYABhAAAoADIAJAAKABAAJiQAACQAKgAQACIMAAASKAAALiQBJAEAKAAkJAAADgACAAoAEAAuACIAEAAKKAAAMgAmAAQoAAAKJAAjACUADgAAMAAOLAAAMgUBABAhACUBAC4dAAAELAA4AAAoZAFiACQBBgAUAAAwACIwAAAEAAoAJgAOABAADAgBCAEAIgAQACgAMgUAACoFAAAsAA4ABCEAYABhAAAoADIAJAAKABAAJiQBACQAKgAQACIMAAgBKAEALiQBpAEAKAAkJAAADgACMAGwAAAuACKgAAAKKAAAMgAmAASoADUAJAAjACUALgAAMAAOPAAAMjUBpAGhACUBAC4dAAAEPAA4AAAoZAFiACQBJgAUAAAwACIwACU3hkkYSTUWchdkklgzJYFJZ2lCNxWHGFaTJFYhSHOZgWcyRUN5JYFg';
+    const decoded = decodeGameState(encoded);
+    expect(decoded).not.toBeNull();
+    const hint = decoded ? findHint(decoded.board) : null;
+    expect(hint?.type).toBe('w-wing');
   });
 });

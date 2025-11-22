@@ -62,6 +62,8 @@ describe('applyHintToBoard', () => {
     expect(board[2][2].candidates).not.toContain(2);
   });
 
+  // W-Wing diagonal/edge cases are covered in detector tests; apply tested above
+
   it('applies XY-Wing elimination', () => {
     const board = makeBoard();
     board[0][0].candidates = [1, 2]; // pivot

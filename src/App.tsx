@@ -161,38 +161,150 @@ const persistGame = (payload: SavedGame) => {
   );
 };
 
-const encodeGameState = (payload: SavedGame): string => {
-  const json = JSON.stringify({
-    level: payload.level,
-    board: payload.board,
-    initialBoard: payload.initialBoard,
-    solution: payload.solution,
-  });
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  if (typeof btoa !== 'undefined') {
+    let binary = '';
+    bytes.forEach((b) => {
+      binary += String.fromCharCode(b);
+    });
+    return btoa(binary);
+  }
+  return Buffer.from(bytes).toString('base64');
+};
+
+const base64ToBytes = (encoded: string): Uint8Array => {
   try {
-    if (typeof btoa !== 'undefined') {
-      return btoa(encodeURIComponent(json));
+    if (typeof atob !== 'undefined') {
+      const binary = atob(encoded);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
     }
-    // Node/test fallback
-    return Buffer.from(json, 'utf8').toString('base64');
+    return Uint8Array.from(Buffer.from(encoded, 'base64'));
   } catch (error) {
-    console.warn('Unable to encode game', error);
+    return new Uint8Array();
+  }
+};
+
+const LEVEL_CODES: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
+const LEVEL_FROM_CODE: Record<number, Difficulty> = { 1: 'easy', 2: 'medium', 3: 'hard' };
+
+const packBoard = (board: CellState[][]): Uint8Array => {
+  const bytes = new Uint8Array(board.length * board[0].length * 2);
+  let idx = 0;
+  board.forEach((row) => {
+    row.forEach((cell) => {
+      let mask = 0;
+      cell.candidates.forEach((digit) => {
+        if (digit >= 1 && digit <= 9) {
+          mask |= 1 << (digit - 1);
+        }
+      });
+      const valueBits = (cell.value ?? 0) & 0xf;
+      const givenBit = cell.given ? 1 : 0;
+      const packed = mask | (valueBits << 9) | (givenBit << 13);
+      bytes[idx] = packed & 0xff;
+      bytes[idx + 1] = (packed >> 8) & 0xff;
+      idx += 2;
+    });
+  });
+  return bytes;
+};
+
+const unpackBoard = (bytes: Uint8Array): CellState[][] => {
+  const board: CellState[][] = Array.from({ length: 9 }, (_row, row) =>
+    Array.from({ length: 9 }, (_col, col) => ({
+      row,
+      col,
+      value: null as number | null,
+      given: false,
+      candidates: [] as number[],
+    })),
+  );
+  let idx = 0;
+  for (let row = 0; row < 9; row += 1) {
+    for (let col = 0; col < 9; col += 1) {
+      const packed = bytes[idx] | (bytes[idx + 1] << 8);
+      const candidates: number[] = [];
+      for (let bit = 0; bit < 9; bit += 1) {
+        if (packed & (1 << bit)) {
+          candidates.push(bit + 1);
+        }
+      }
+      const value = (packed >> 9) & 0xf;
+      const given = ((packed >> 13) & 1) === 1;
+      board[row][col] = {
+        row,
+        col,
+        value: value === 0 ? null : value,
+        given,
+        candidates,
+      };
+      idx += 2;
+    }
+  }
+  return board;
+};
+
+const packNibbles = (values: number[]): Uint8Array => {
+  const bytes = new Uint8Array(Math.ceil(values.length / 2));
+  let idx = 0;
+  for (let i = 0; i < values.length; i += 2) {
+    const first = values[i] & 0xf;
+    const second = values[i + 1] !== undefined ? values[i + 1] & 0xf : 0;
+    bytes[idx] = (first << 4) | second;
+    idx += 1;
+  }
+  return bytes;
+};
+
+const unpackNibbles = (bytes: Uint8Array, expected: number): number[] => {
+  const values: number[] = [];
+  bytes.forEach((byte) => {
+    values.push((byte >> 4) & 0xf);
+    if (values.length < expected) {
+      values.push(byte & 0xf);
+    }
+  });
+  return values.slice(0, expected);
+};
+
+const encodeGameState = (payload: SavedGame): string => {
+  if (!payload.board?.length || !payload.initialBoard?.length || !payload.solution?.length) {
     return '';
   }
+  const boardBytes = packBoard(payload.board);
+  const initialBytes = packBoard(payload.initialBoard);
+  const solutionBytes = packNibbles(payload.solution.flat());
+  const result = new Uint8Array(1 + boardBytes.length + initialBytes.length + solutionBytes.length);
+  result[0] = LEVEL_CODES[payload.level] ?? 0;
+  result.set(boardBytes, 1);
+  result.set(initialBytes, 1 + boardBytes.length);
+  result.set(solutionBytes, 1 + boardBytes.length + initialBytes.length);
+  return bytesToBase64(result);
 };
 
 const decodeGameState = (encoded: string): SavedGame | null => {
   try {
-    const json =
-      typeof atob !== 'undefined'
-        ? decodeURIComponent(atob(encoded))
-        : Buffer.from(encoded, 'base64').toString('utf8');
-    const parsed = JSON.parse(json) as SavedGame;
-    return {
-      ...parsed,
-      board: parsed.board ? cloneBoard(parsed.board) : [],
-      initialBoard: parsed.initialBoard ? cloneBoard(parsed.initialBoard) : [],
-      solution: parsed.solution ? parsed.solution.map((row) => [...row]) : [],
-    };
+    const bytes = base64ToBytes(encoded);
+    if (bytes.length < 1 + 162 + 162 + 41) {
+      return null;
+    }
+    const levelCode = bytes[0];
+    const boardSlice = bytes.slice(1, 1 + 162);
+    const initialSlice = bytes.slice(1 + 162, 1 + 162 + 162);
+    const solutionSlice = bytes.slice(1 + 162 + 162);
+    const level = LEVEL_FROM_CODE[levelCode] ?? 'easy';
+    const board = unpackBoard(boardSlice);
+    const initialBoard = unpackBoard(initialSlice);
+    const flatSolution = unpackNibbles(solutionSlice, 81);
+    const solution: number[][] = [];
+    for (let idx = 0; idx < 81; idx += 9) {
+      solution.push(flatSolution.slice(idx, idx + 9));
+    }
+    return { level, board, initialBoard, solution };
   } catch (error) {
     console.warn('Unable to decode game', error);
     return null;
@@ -1291,6 +1403,8 @@ export {
   detectSimpleColoring,
   detectMultiColoring,
   detectForcingChains,
+  encodeGameState,
+  decodeGameState,
 };
 export type { CellState, CellPointer, AutomationSettings };
 

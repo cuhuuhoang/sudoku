@@ -5,50 +5,28 @@ export interface GeneratedSudoku {
   solution: number[][];
 }
 
-import * as sudokuLib from 'sudoku';
+import { getSudoku } from 'sudoku-gen';
 
-type ExternalSudoku = {
-  makepuzzle: () => (number | null)[];
-  solvepuzzle: (puzzle: (number | null)[]) => (number | null)[];
-} | null;
-
-// Vite bundles the library; if missing, surface a clear error immediately.
-const externalSudoku: ExternalSudoku =
-  sudokuLib && typeof sudokuLib.makepuzzle === 'function' && typeof sudokuLib.solvepuzzle === 'function'
-    ? sudokuLib
-    : null;
-
-export const DIFFICULTY_EMPTY_CELLS: Record<Difficulty, number> = {
-  easy: 32,
-  medium: 45,
-  hard: 55,
+const sequenceToGrid = (sequence: string): number[][] => {
+  if (sequence.length !== 81) {
+    throw new Error(`Invalid sudoku sequence length: expected 81, received ${sequence.length}`);
+  }
+  const values = sequence.split('').map((char) => {
+    if (char === '-' || char === '0') {
+      return 0;
+    }
+    const digit = Number(char);
+    if (Number.isNaN(digit) || digit < 1 || digit > 9) {
+      throw new Error(`Unexpected character in sudoku sequence: "${char}"`);
+    }
+    return digit;
+  });
+  return Array.from({ length: 9 }, (_row, row) => values.slice(row * 9, row * 9 + 9));
 };
 
 export function generateSudoku(difficulty: Difficulty): GeneratedSudoku {
-  const holes = DIFFICULTY_EMPTY_CELLS[difficulty];
-
-  if (!externalSudoku) {
-    throw new Error('Sudoku generator library "sudoku" is not installed.');
-  }
-
-  const rawPuzzle = externalSudoku.makepuzzle();
-  const rawSolution = externalSudoku.solvepuzzle(rawPuzzle);
-  const solution = Array.from({ length: 9 }, (_, row) =>
-    Array.from({ length: 9 }, (__ , col) => {
-      const value = rawSolution[row * 9 + col];
-      return value === null ? 0 : (value as number) + 1;
-    }),
-  );
-  const puzzle = solution.map((row) => [...row]);
-  let removed = 0;
-  while (removed < holes) {
-    const idx = Math.floor(Math.random() * 81);
-    const r = Math.floor(idx / 9);
-    const c = idx % 9;
-    if (puzzle[r][c] !== 0) {
-      puzzle[r][c] = 0;
-      removed += 1;
-    }
-  }
+  const generated = getSudoku(difficulty);
+  const puzzle = sequenceToGrid(generated.puzzle);
+  const solution = sequenceToGrid(generated.solution);
   return { puzzle, solution };
 }

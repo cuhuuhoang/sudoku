@@ -3,6 +3,7 @@ import {
   applyHintToBoard,
   detectPeerElimination,
   detectForcingChains,
+  detectLockedCandidatesClaiming,
   detectWWing,
   detectXYWing,
   findHint,
@@ -91,5 +92,19 @@ describe('applyHintToBoard', () => {
     const result = applyHintToBoard(board, hint);
     expect(result.changed).toBe(true);
     expect(board[1][1].candidates).not.toContain(3);
+  });
+
+  it('applies locked claiming elimination', () => {
+    const board = makeBoard();
+    board[0][2].candidates = [6];
+    board[0][1].candidates = [6];
+    board[0][0].candidates = [6]; // row 0 has all 6s inside the same box
+    board[1][1].candidates = [6]; // elimination targets inside the same box (not in the locked column)
+    const hint = detectLockedCandidatesClaiming(board);
+    expect(hint?.type).toBe('locked-claiming');
+    if (!hint) return;
+    const result = applyHintToBoard(board, hint);
+    expect(result.changed).toBe(true);
+    expect(board[1][1].candidates).not.toContain(6);
   });
 });

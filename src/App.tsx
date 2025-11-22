@@ -1669,7 +1669,9 @@ const detectLockedCandidatesPointing: HintDetector = (board) => {
               type: 'locked-pointing',
               title: 'Locked Candidates (Pointing)',
               message: `Digit ${digit} is locked in row ${rowIdx + 1} of this box. Remove ${digit} from other cells in that row.`,
-              cells,
+              cells: [...cells, ...eliminationTargets],
+              digit,
+              eliminationStartIndex: cells.length,
             };
           }
         }
@@ -1691,7 +1693,9 @@ const detectLockedCandidatesPointing: HintDetector = (board) => {
               type: 'locked-pointing',
               title: 'Locked Candidates (Pointing)',
               message: `Digit ${digit} is locked in column ${colIdx + 1} of this box. Remove ${digit} from other cells in that column.`,
-              cells,
+              cells: [...cells, ...eliminationTargets],
+              digit,
+              eliminationStartIndex: cells.length,
             };
           }
         }
@@ -1736,7 +1740,9 @@ const detectLockedCandidatesClaiming: HintDetector = (board) => {
             type: 'locked-claiming',
             title: 'Locked Candidates (Claiming)',
             message: `Digit ${digit} appears only in box ${Math.floor(row / 3) + 1}, so remove it from other cells of that box.`,
-            cells: positions,
+            cells: [...positions, ...eliminationTargets],
+            digit,
+            eliminationStartIndex: positions.length,
           };
         }
       }
@@ -1775,7 +1781,9 @@ const detectLockedCandidatesClaiming: HintDetector = (board) => {
             type: 'locked-claiming',
             title: 'Locked Candidates (Claiming)',
             message: `Digit ${digit} appears only in column ${col + 1} inside one box. Remove it from other cells of that box.`,
-            cells: positions,
+            cells: [...positions, ...eliminationTargets],
+            digit,
+            eliminationStartIndex: positions.length,
           };
         }
       }
@@ -2775,11 +2783,8 @@ const applyHintToBoard = (working: CellState[][], hint: Hint): { message: string
 
   const first = hint.cells[0];
   const firstCell = working[first.row]?.[first.col];
-  const isPlacementHint =
-    targetDigit !== undefined &&
-    (['naked-single', 'hidden-single-row', 'hidden-single-column', 'hidden-single-box'].includes(hint.type) ||
-      (firstCell && isEditableCell(firstCell) && firstCell.candidates.length === 1) ||
-      hint.cells.length === 1);
+  const placementTypes = ['naked-single', 'hidden-single-row', 'hidden-single-column', 'hidden-single-box'];
+  const isPlacementHint = targetDigit !== undefined && placementTypes.includes(hint.type);
 
   if (isPlacementHint && firstCell && isEditableCell(firstCell)) {
     firstCell.value = targetDigit;

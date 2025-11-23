@@ -229,6 +229,17 @@ button.ghost {
   border: 1px solid var(--tile-border);
 }
 
+.auto-button {
+  width: 100%;
+  font-weight: 700;
+  background: linear-gradient(120deg, #10b981, #0ea5e9);
+  color: #ffffff;
+}
+
+.auto-button.stop {
+  background: linear-gradient(120deg, #f97316, #ef4444);
+}
+
 .toggle-option {
   display: grid;
   grid-template-columns: auto 1fr;

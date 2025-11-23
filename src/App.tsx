@@ -121,6 +121,15 @@ const createBoardFromPuzzle = (puzzle: number[][]): CellState[][] =>
 
 const isBrowser = typeof window !== 'undefined';
 
+const isBoardSolved = (candidateBoard: CellState[][], targetSolution: number[][]): boolean => {
+  if (!candidateBoard.length || !targetSolution.length) {
+    return false;
+  }
+  return candidateBoard.every((row, rowIdx) =>
+    row.every((cell, colIdx) => cell.value === targetSolution[rowIdx]?.[colIdx]),
+  );
+};
+
 const readSavedGame = (): SavedGame | null => {
   if (!isBrowser) {
     return null;
@@ -589,6 +598,13 @@ function App() {
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState('');
+  const [isAutoRunning, setIsAutoRunning] = useState(false);
+  const automationSettingsRef = useRef<AutomationSettings>(automationSettings);
+  const latestBoardRef = useRef<CellState[][]>([]);
+  const latestInitialBoardRef = useRef<CellState[][]>([]);
+  const latestSolutionRef = useRef<number[][]>([]);
+  const latestLevelRef = useRef<Difficulty>(level);
+  const autoRunIdRef = useRef(0);
 
   const resetSelectionState = () => {
     setSelectedCell(null);
@@ -605,8 +621,11 @@ function App() {
     const saved = readSavedGame();
     setHasSavedGame(Boolean(saved));
     if (saved) {
-      const { board: processedBoard, promoted } = runAutomation(saved.board, automationSettings);
-      const { board: processedInitial } = runAutomation(saved.initialBoard, automationSettings);
+      const { board: processedBoard, promoted } = runAutomation(saved.board, automationSettingsRef.current);
+      const { board: processedInitial } = runAutomation(
+        saved.initialBoard,
+        automationSettingsRef.current,
+      );
       setBoard(processedBoard);
       setInitialBoard(processedInitial);
       setSolution(saved.solution);
@@ -647,6 +666,26 @@ function App() {
     }
     localStorage.setItem(AUTO_SETTINGS_KEY, JSON.stringify(automationSettings));
   }, [automationSettings]);
+
+  useEffect(() => {
+    automationSettingsRef.current = automationSettings;
+  }, [automationSettings]);
+
+  useEffect(() => {
+    latestBoardRef.current = board;
+  }, [board]);
+
+  useEffect(() => {
+    latestInitialBoardRef.current = initialBoard;
+  }, [initialBoard]);
+
+  useEffect(() => {
+    latestSolutionRef.current = solution;
+  }, [solution]);
+
+  useEffect(() => {
+    latestLevelRef.current = level;
+  }, [level]);
 
   useEffect(() => {
     if (!board.length || !solution.length) {
@@ -750,17 +789,21 @@ function App() {
 
   const UNDO_LIMIT = 20;
 
-  const recordSnapshot = () => {
-    if (!board.length) {
+  const pushSnapshot = (snapshot: CellState[][]) => {
+    if (!snapshot.length) {
       return;
     }
     setHistory((prev) => {
-      const next = [...prev, cloneBoard(board)];
+      const next = [...prev, cloneBoard(snapshot)];
       if (next.length > UNDO_LIMIT) {
         next.shift();
       }
       return next;
     });
+  };
+
+  const recordSnapshot = () => {
+    pushSnapshot(board);
   };
 
   const handleUndo = () => {
@@ -788,19 +831,22 @@ function App() {
     setBoard((prev) => {
       const next = cloneBoard(prev);
       mutator(next);
-      const { board: processed, promoted } = runAutomation(next, automationSettings);
+      const { board: processed, promoted } = runAutomation(next, automationSettingsRef.current);
       promotions = promoted;
       resolvedFallback =
         typeof fallbackMessage === 'function' ? fallbackMessage() : fallbackMessage ?? undefined;
       processedBoard = processed;
       return processed;
     });
-    if (processedBoard && solution.length) {
+    const currentSolution = latestSolutionRef.current;
+    const currentInitial = latestInitialBoardRef.current;
+    const currentLevel = latestLevelRef.current;
+    if (processedBoard && currentSolution.length) {
       persistGame({
         board: processedBoard,
-        initialBoard: cloneBoard(initialBoard),
-        solution,
-        level,
+        initialBoard: cloneBoard(currentInitial),
+        solution: currentSolution.map((row) => [...row]),
+        level: currentLevel,
       });
       setHasSavedGame(true);
     }
@@ -822,7 +868,7 @@ function App() {
     try {
       const { puzzle, solution } = generateSudoku(difficulty);
       const seededBoard = createBoardFromPuzzle(puzzle);
-      const { board: processedBoard, promoted } = runAutomation(seededBoard, automationSettings);
+      const { board: processedBoard, promoted } = runAutomation(seededBoard, automationSettingsRef.current);
       setBoard(processedBoard);
       setInitialBoard(cloneBoard(processedBoard));
       setSolution(solution);
@@ -845,8 +891,8 @@ function App() {
       return;
     }
 
-    const { board: processedBoard, promoted } = runAutomation(saved.board, automationSettings);
-    const { board: processedInitial } = runAutomation(saved.initialBoard, automationSettings);
+    const { board: processedBoard, promoted } = runAutomation(saved.board, automationSettingsRef.current);
+    const { board: processedInitial } = runAutomation(saved.initialBoard, automationSettingsRef.current);
     setBoard(processedBoard);
     setInitialBoard(processedInitial);
     setSolution(saved.solution);
@@ -871,7 +917,10 @@ function App() {
       return;
     }
 
-    const { board: refreshedBoard, promoted } = runAutomation(cloneBoard(initialBoard), automationSettings);
+    const { board: refreshedBoard, promoted } = runAutomation(
+      cloneBoard(initialBoard),
+      automationSettingsRef.current,
+    );
     setBoard(refreshedBoard);
     resetSelectionState();
     setHistory([]);
@@ -1071,19 +1120,98 @@ function App() {
     setStatus(hintMessage);
   };
 
-  const solved = useMemo(() => {
-    if (!solution.length || !board.length) {
-      return false;
+  const toggleAutoRun = () => {
+    if (!board.length || !solution.length) {
+      setStatus('Start a puzzle before enabling Auto.');
+      return;
     }
+    setIsAutoRunning((prev) => {
+      const next = !prev;
+      setStatus(next ? 'Auto solving...' : 'Auto stopped.');
+      return next;
+    });
+  };
 
-    return board.every((row, rowIdx) => row.every((cell, colIdx) => cell.value === solution[rowIdx][colIdx]));
+  const solved = useMemo(() => {
+    return isBoardSolved(board, solution);
   }, [board, solution]);
 
   useEffect(() => {
-    if (solved) {
+    if (solved && !isAutoRunning) {
       setStatus('Puzzle solved! Great job.');
     }
-  }, [solved]);
+  }, [solved, isAutoRunning]);
+
+  useEffect(() => {
+    if (!isAutoRunning) {
+      return;
+    }
+    const runId = ++autoRunIdRef.current;
+    const pause = (ms = 60) => new Promise((resolve) => setTimeout(resolve, ms));
+    const stopAuto = (message: string) => {
+      if (autoRunIdRef.current === runId) {
+        setStatus(message);
+        setIsAutoRunning(false);
+      }
+    };
+
+    const tick = async () => {
+      while (autoRunIdRef.current === runId) {
+        const currentBoard = latestBoardRef.current;
+        const currentSolution = latestSolutionRef.current;
+        if (!currentBoard.length || !currentSolution.length) {
+          stopAuto('Auto stopped: no active puzzle.');
+          return;
+        }
+
+        if (isBoardSolved(currentBoard, currentSolution)) {
+          setStatus('Auto solved a puzzle. Loading another...');
+          startGame(latestLevelRef.current);
+          await pause(80);
+          continue;
+        }
+
+        const hint = findHint(currentBoard);
+        if (!hint) {
+          stopAuto('Auto stopped: no hint available.');
+          return;
+        }
+
+        setActiveHint(hint);
+        let result: { message: string; changed: boolean } | null = null;
+        pushSnapshot(latestBoardRef.current);
+        commitBoardChange(
+          (draft) => {
+            result = applyHintToBoard(draft, hint);
+          },
+          () => result?.message ?? '',
+        );
+
+        if (!result?.changed) {
+          stopAuto('Auto stopped: hint could not be applied.');
+          return;
+        }
+
+        await pause(60);
+      }
+    };
+
+    tick().catch((error) => {
+      console.error('Auto solve failed', error);
+      stopAuto('Auto stopped due to an error.');
+    });
+
+    return () => {
+      autoRunIdRef.current += 1;
+    };
+  }, [isAutoRunning]);
+
+  useEffect(() => {
+    if (screen !== 'game' && isAutoRunning) {
+      setIsAutoRunning(false);
+      setStatus('Auto stopped.');
+    }
+  }, [screen, isAutoRunning]);
 
   return (
     <div className="app-shell">
@@ -1399,6 +1527,13 @@ function App() {
                 </div>
               </label>
             </div>
+            <button
+              className={isAutoRunning ? 'auto-button stop' : 'auto-button'}
+              onClick={toggleAutoRun}
+              disabled={!board.length || !solution.length || isGenerating}
+            >
+              {isAutoRunning ? 'Stop Auto' : 'Auto'}
+            </button>
           </div>
           </div>
 

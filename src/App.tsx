@@ -25,6 +25,8 @@ type HintType =
   | 'xy-wing'
   | 'xyz-wing';
 
+type HintSettings = Record<HintType, boolean>;
+
 interface Hint {
   type: HintType;
   title: string;
@@ -65,6 +67,7 @@ interface AutomationSettings {
 const STORAGE_KEY = 'sudoku-current-game-v1';
 const THEME_KEY = 'sudoku-theme';
 const AUTO_SETTINGS_KEY = 'sudoku-auto-settings-v1';
+const HINT_SETTINGS_KEY = 'sudoku-hint-settings-v1';
 const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const BUILD_TIME_OFFSET_MS = 7 * 60 * 60 * 1000;
 const formatBuildTimestamp = (date: Date) => {
@@ -99,6 +102,45 @@ const difficultyOptions: { id: Difficulty; title: string; subtitle: string }[] =
   { id: 'hard', title: 'Hard', subtitle: 'Sparse clues, focus and patience required.' },
   { id: 'expert', title: 'Expert', subtitle: 'Minimal clues and advanced logic territory.' },
 ];
+
+const orderedHintTypes: HintType[] = [
+  'naked-single',
+  'hidden-single-row',
+  'hidden-single-column',
+  'hidden-single-box',
+  'peer-elimination',
+  'locked-pointing',
+  'locked-claiming',
+  'naked-pair',
+  'naked-triple',
+  'naked-quad',
+  'hidden-pair',
+  'hidden-triple',
+  'hidden-quad',
+  'x-wing',
+  'swordfish',
+  'jellyfish',
+  'xy-wing',
+  'xyz-wing',
+];
+
+const buildDefaultHintSettings = (): HintSettings =>
+  orderedHintTypes.reduce(
+    (acc, type) => ({
+      ...acc,
+      [type]: true,
+    }),
+    {} as HintSettings,
+  );
+
+const buildDisabledHintSettings = (): HintSettings =>
+  orderedHintTypes.reduce(
+    (acc, type) => ({
+      ...acc,
+      [type]: false,
+    }),
+    {} as HintSettings,
+  );
 
 const cloneBoard = (board: CellState[][]): CellState[][] =>
   board.map((row) =>
@@ -200,6 +242,30 @@ const readAutomationSettings = (): AutomationSettings => {
   } catch (error) {
     console.warn('Unable to read automation settings', error);
     return { cleanup: true, promote: true, hiddenSingles: true };
+  }
+};
+
+const readHintSettings = (): HintSettings => {
+  if (!isBrowser) {
+    return buildDefaultHintSettings();
+  }
+
+  try {
+    const cached = localStorage.getItem(HINT_SETTINGS_KEY);
+    if (!cached) {
+      return buildDefaultHintSettings();
+    }
+    const parsed = JSON.parse(cached) as Partial<HintSettings>;
+    const next = buildDefaultHintSettings();
+    orderedHintTypes.forEach((type) => {
+      if (typeof parsed[type] === 'boolean') {
+        next[type] = Boolean(parsed[type]);
+      }
+    });
+    return next;
+  } catch (error) {
+    console.warn('Unable to read hint settings', error);
+    return buildDefaultHintSettings();
   }
 };
 
@@ -620,13 +686,16 @@ function App() {
   const pointerAddedKeyRef = useRef<string | null>(null);
   const [activeHint, setActiveHint] = useState<Hint | null>(null);
   const [automationSettings, setAutomationSettings] = useState<AutomationSettings>(() => readAutomationSettings());
+  const [hintSettings, setHintSettings] = useState<HintSettings>(() => readHintSettings());
   const [isStateModalOpen, setIsStateModalOpen] = useState(false);
+  const [isHintSettingsOpen, setIsHintSettingsOpen] = useState(false);
   const [exportText, setExportText] = useState('');
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState('');
   const [isAutoRunning, setIsAutoRunning] = useState(false);
   const automationSettingsRef = useRef<AutomationSettings>(automationSettings);
+  const hintSettingsRef = useRef<HintSettings>(hintSettings);
   const latestBoardRef = useRef<CellState[][]>([]);
   const latestInitialBoardRef = useRef<CellState[][]>([]);
   const latestSolutionRef = useRef<number[][]>([]);
@@ -639,6 +708,12 @@ function App() {
     setMultiSelectedKeys(new Set<string>());
     pointerAddedKeyRef.current = null;
   };
+
+  const formatHintLabel = (type: HintType) =>
+    type
+      .split('-')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
 
   useEffect(() => {
     if (hasRestored.current) {
@@ -697,6 +772,17 @@ function App() {
   useEffect(() => {
     automationSettingsRef.current = automationSettings;
   }, [automationSettings]);
+
+  useEffect(() => {
+    if (!isBrowser) {
+      return;
+    }
+    localStorage.setItem(HINT_SETTINGS_KEY, JSON.stringify(hintSettings));
+  }, [hintSettings]);
+
+  useEffect(() => {
+    hintSettingsRef.current = hintSettings;
+  }, [hintSettings]);
 
   useEffect(() => {
     latestBoardRef.current = board;
@@ -1107,7 +1193,7 @@ function App() {
       setStatus('Start a puzzle to request hints.');
       return;
     }
-    const hint = findHint(board);
+    const hint = findHint(board, hintSettingsRef.current);
     if (!hint) {
       setActiveHint(null);
       setStatus('No hints available right now.');
@@ -1199,7 +1285,7 @@ function App() {
           continue;
         }
 
-        const hint = findHint(currentBoard);
+        const hint = findHint(currentBoard, hintSettingsRef.current);
         if (!hint) {
           stopAuto('Auto stopped: no hint available.');
           return;
@@ -1248,7 +1334,10 @@ function App() {
       setIsAutoRunning(false);
       setStatus('Auto stopped.');
     }
-  }, [screen, isAutoRunning]);
+    if (screen !== 'game' && isHintSettingsOpen) {
+      setIsHintSettingsOpen(false);
+    }
+  }, [screen, isAutoRunning, isHintSettingsOpen]);
 
   return (
     <div className="app-shell">
@@ -1564,13 +1653,22 @@ function App() {
                 </div>
               </label>
             </div>
-            <button
-              className={isAutoRunning ? 'auto-button stop' : 'auto-button'}
-              onClick={toggleAutoRun}
-              disabled={!board.length || !solution.length || isGenerating}
-            >
-              {isAutoRunning ? 'Stop Auto' : 'Auto'}
-            </button>
+            <div className="control-actions">
+              <button
+                className={isAutoRunning ? 'auto-button stop' : 'auto-button'}
+                onClick={toggleAutoRun}
+                disabled={!board.length || !solution.length || isGenerating}
+              >
+                {isAutoRunning ? 'Stop Auto' : 'Auto'}
+              </button>
+              <button
+                className="ghost hint-settings-button"
+                onClick={() => setIsHintSettingsOpen(true)}
+                disabled={!board.length || !solution.length}
+              >
+                Hint settings
+              </button>
+            </div>
           </div>
           </div>
 
@@ -1632,6 +1730,50 @@ function App() {
           </div>
         </div>
       )}
+      {isHintSettingsOpen && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setIsHintSettingsOpen(false)}>
+          <div
+            className="modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Hint settings"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h2>Hint settings</h2>
+              <button className="ghost close-button" onClick={() => setIsHintSettingsOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="muted small-feedback">Select which techniques Auto and Show Hint can use.</p>
+              <div className="modal-row hint-settings-actions">
+                <button onClick={() => setHintSettings(buildDefaultHintSettings())}>Enable all</button>
+                <button className="ghost" onClick={() => setHintSettings(buildDisabledHintSettings())}>
+                  Disable all
+                </button>
+              </div>
+              <div className="hint-settings-grid">
+                {orderedHintTypes.map((type) => (
+                  <label key={type} className="hint-settings-option">
+                    <input
+                      type="checkbox"
+                      checked={hintSettings[type]}
+                      onChange={(event) =>
+                        setHintSettings((prev) => ({
+                          ...prev,
+                          [type]: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span className="toggle-title">{formatHintLabel(type)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1658,7 +1800,7 @@ export {
   decodeGameState,
   applyHintToBoard,
 };
-export type { CellState, CellPointer, AutomationSettings };
+export type { CellState, CellPointer, AutomationSettings, HintType };
 
 const isEditableCell = (cell: CellState) => !cell.given && cell.value === null;
 
@@ -1666,29 +1808,36 @@ const createCellLabel = (row: number, col: number) => `R${row + 1}C${col + 1}`;
 
 type HintDetector = (board: CellState[][]) => Hint | null;
 
-const findHint = (board: CellState[][]): Hint | null => {
-  const detectors: HintDetector[] = [
-    detectNakedSingle,
-    detectHiddenSingleRow,
-    detectHiddenSingleColumn,
-    detectHiddenSingleBox,
-    detectPeerElimination,
-    detectLockedCandidatesPointing,
-    detectLockedCandidatesClaiming,
-    (b) => detectNakedSet(b, 2, 'naked-pair', 'Naked Pair'),
-    (b) => detectNakedSet(b, 3, 'naked-triple', 'Naked Triple'),
-    (b) => detectNakedSet(b, 4, 'naked-quad', 'Naked Quad'),
-    (b) => detectHiddenSet(b, 2, 'hidden-pair', 'Hidden Pair'),
-  (b) => detectHiddenSet(b, 3, 'hidden-triple', 'Hidden Triple'),
-  (b) => detectHiddenSet(b, 4, 'hidden-quad', 'Hidden Quad'),
-  detectXWing,
-  (b) => detectFish(b, 3, 'swordfish', 'Swordfish'),
-  (b) => detectFish(b, 4, 'jellyfish', 'Jellyfish'),
-  detectXYWing,
-  detectXYZWing,
+type HintDetectorEntry = { type: HintType; detector: HintDetector };
+
+const hintDetectors: HintDetectorEntry[] = [
+  { type: 'naked-single', detector: (b) => detectNakedSingle(b) },
+  { type: 'hidden-single-row', detector: (b) => detectHiddenSingleRow(b) },
+  { type: 'hidden-single-column', detector: (b) => detectHiddenSingleColumn(b) },
+  { type: 'hidden-single-box', detector: (b) => detectHiddenSingleBox(b) },
+  { type: 'peer-elimination', detector: (b) => detectPeerElimination(b) },
+  { type: 'locked-pointing', detector: (b) => detectLockedCandidatesPointing(b) },
+  { type: 'locked-claiming', detector: (b) => detectLockedCandidatesClaiming(b) },
+  { type: 'naked-pair', detector: (b) => detectNakedSet(b, 2, 'naked-pair', 'Naked Pair') },
+  { type: 'naked-triple', detector: (b) => detectNakedSet(b, 3, 'naked-triple', 'Naked Triple') },
+  { type: 'naked-quad', detector: (b) => detectNakedSet(b, 4, 'naked-quad', 'Naked Quad') },
+  { type: 'hidden-pair', detector: (b) => detectHiddenSet(b, 2, 'hidden-pair', 'Hidden Pair') },
+  { type: 'hidden-triple', detector: (b) => detectHiddenSet(b, 3, 'hidden-triple', 'Hidden Triple') },
+  { type: 'hidden-quad', detector: (b) => detectHiddenSet(b, 4, 'hidden-quad', 'Hidden Quad') },
+  { type: 'x-wing', detector: (b) => detectXWing(b) },
+  { type: 'swordfish', detector: (b) => detectFish(b, 3, 'swordfish', 'Swordfish') },
+  { type: 'jellyfish', detector: (b) => detectFish(b, 4, 'jellyfish', 'Jellyfish') },
+  { type: 'xy-wing', detector: (b) => detectXYWing(b) },
+  { type: 'xyz-wing', detector: (b) => detectXYZWing(b) },
 ];
-  for (const detector of detectors) {
-    const hint = detector(board);
+
+const findHint = (board: CellState[][], enabled?: Partial<HintSettings>): Hint | null => {
+  const activeSettings = enabled ?? buildDefaultHintSettings();
+  for (const entry of hintDetectors) {
+    if (activeSettings[entry.type] === false) {
+      continue;
+    }
+    const hint = entry.detector(board);
     if (hint) {
       return hint;
     }

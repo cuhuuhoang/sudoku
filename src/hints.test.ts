@@ -13,7 +13,9 @@ import {
   detectXWing,
   detectXYWing,
   detectXYZWing,
+  findHint,
   type CellState,
+  type HintType,
 } from './App';
 
 const makeBoard = (): CellState[][] =>
@@ -229,6 +231,26 @@ describe('hint detectors', () => {
     setCandidates(board, 3, 0, [1, 3]);
     setCandidates(board, 3, 3, [4]); // no shared candidate
     expect(detectXYZWing(board)).toBeNull();
+  });
+
+  it('respects enabled hint settings when finding hints', () => {
+    const board = makeBoard();
+    setCandidates(board, 0, 0, [1]); // naked single
+    setCandidates(board, 0, 1, [2]); // hidden single row for digit 2
+
+    const defaultHint = findHint(board);
+    expect(defaultHint?.type).toBe('naked-single');
+
+    const skipNaked = findHint(board, { 'naked-single': false });
+    expect(skipNaked?.type).toBe('hidden-single-row');
+
+    const skipSingles = findHint(board, {
+      'naked-single': false,
+      'hidden-single-row': false,
+      'hidden-single-column': false,
+      'hidden-single-box': false,
+    } as Partial<Record<HintType, boolean>>);
+    expect(skipSingles).toBeNull();
   });
 
 });

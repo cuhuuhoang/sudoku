@@ -229,6 +229,14 @@ button.ghost {
   border: 1px solid var(--tile-border);
 }
 
+.control-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
 .auto-button {
   width: 100%;
   font-weight: 700;
@@ -238,6 +246,10 @@ button.ghost {
 
 .auto-button.stop {
   background: linear-gradient(120deg, #f97316, #ef4444);
+}
+
+.hint-settings-button {
+  width: 100%;
 }
 
 .toggle-option {
@@ -307,6 +319,28 @@ button.ghost {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.hint-settings-actions {
+  justify-content: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hint-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+}
+
+.hint-settings-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--tile-border);
+  border-radius: 8px;
 }
 
 .modal-section {

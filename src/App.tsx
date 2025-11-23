@@ -1147,6 +1147,7 @@ function App() {
       return;
     }
     const runId = ++autoRunIdRef.current;
+    let staleHintCount = 0;
     const pause = (ms = 60) => new Promise((resolve) => setTimeout(resolve, ms));
     const stopAuto = (message: string) => {
       if (autoRunIdRef.current === runId) {
@@ -1188,10 +1189,17 @@ function App() {
         );
 
         if (!result?.changed) {
-          stopAuto('Auto stopped: hint could not be applied.');
-          return;
+          staleHintCount += 1;
+          if (staleHintCount >= 3) {
+            stopAuto('Auto stopped: hint could not be applied.');
+            return;
+          }
+          setStatus('Auto retrying the next hint...');
+          await pause(80);
+          continue;
         }
 
+        staleHintCount = 0;
         await pause(60);
       }
     };

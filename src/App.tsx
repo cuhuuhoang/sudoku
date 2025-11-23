@@ -130,6 +130,33 @@ const isBoardSolved = (candidateBoard: CellState[][], targetSolution: number[][]
   );
 };
 
+const boardsEqual = (first: CellState[][], second: CellState[][]): boolean => {
+  if (first.length !== second.length) {
+    return false;
+  }
+  for (let row = 0; row < first.length; row += 1) {
+    if (first[row].length !== second[row]?.length) {
+      return false;
+    }
+    for (let col = 0; col < first[row].length; col += 1) {
+      const a = first[row][col];
+      const b = second[row][col];
+      if (!b || a.value !== b.value || a.given !== b.given) {
+        return false;
+      }
+      if (a.candidates.length !== b.candidates.length) {
+        return false;
+      }
+      for (let idx = 0; idx < a.candidates.length; idx += 1) {
+        if (a.candidates[idx] !== b.candidates[idx]) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+};
+
 const readSavedGame = (): SavedGame | null => {
   if (!isBrowser) {
     return null;
@@ -1147,7 +1174,7 @@ function App() {
       return;
     }
     const runId = ++autoRunIdRef.current;
-    let staleHintCount = 0;
+    let unchangedLoops = 0;
     const pause = (ms = 60) => new Promise((resolve) => setTimeout(resolve, ms));
     const stopAuto = (message: string) => {
       if (autoRunIdRef.current === runId) {
@@ -1158,7 +1185,7 @@ function App() {
 
     const tick = async () => {
       while (autoRunIdRef.current === runId) {
-        const currentBoard = latestBoardRef.current;
+        const currentBoard = cloneBoard(latestBoardRef.current);
         const currentSolution = latestSolutionRef.current;
         if (!currentBoard.length || !currentSolution.length) {
           stopAuto('Auto stopped: no active puzzle.');
@@ -1188,18 +1215,20 @@ function App() {
           () => result?.message ?? '',
         );
 
-        if (!result?.changed) {
-          staleHintCount += 1;
-          if (staleHintCount >= 3) {
+        await pause(80);
+
+        const updatedBoard = latestBoardRef.current;
+        if (boardsEqual(currentBoard, updatedBoard)) {
+          unchangedLoops += 1;
+          if (unchangedLoops >= 3) {
             stopAuto('Auto stopped: hint could not be applied.');
             return;
           }
-          setStatus('Auto retrying the next hint...');
-          await pause(80);
-          continue;
+          setStatus('Auto retrying another hint...');
+        } else {
+          unchangedLoops = 0;
         }
 
-        staleHintCount = 0;
         await pause(60);
       }
     };

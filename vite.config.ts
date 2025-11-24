@@ -11,7 +11,13 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
-      includeAssets: ['img.png'],
+      includeAssets: [
+        'favicon.svg',
+        'favicon.png',
+        'favicon-32.png',
+        'icons/icon-192.png',
+        'icons/icon-512.png',
+      ],
       srcDir: 'src',
       filename: 'sw.ts',
       strategies: 'injectManifest',
